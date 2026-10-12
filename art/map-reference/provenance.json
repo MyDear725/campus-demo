@@ -1,0 +1,18 @@
+{
+  "campus_id": 77298,
+  "campus_name": "开发区校区",
+  "official_site": "http://map.dlut.edu.cn/#/home",
+  "sources": [
+    "http://map.dlut.edu.cn/openmap/mapi/campus/v1",
+    "http://map.dlut.edu.cn/openmap/mapi/bd/v1/bound"
+  ],
+  "feature_count": 27,
+  "retrieved": "2026-10-12",
+  "reference_image": "User-provided satellite screenshot, codex-clipboard-628a8556-bbf0-466e-8f70-aab12b0275dd.png",
+  "notes": [
+    "UI page timed out; public API used to isolate development-campus features.",
+    "Building heights, facades and hill elevation are illustrative.",
+    "Road centerlines manually traced; flat connector instead of elevated bridge.",
+    "Official dormitory names retained where screenshot differs."
+  ]
+}

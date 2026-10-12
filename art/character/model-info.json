@@ -1,0 +1,23 @@
+{
+  "vertices": 41492,
+  "triangles": 81856,
+  "bones": 18,
+  "materials": 17,
+  "clips": [
+    "Idle",
+    "Walk",
+    "Run",
+    "Jump",
+    "Fall",
+    "Land",
+    "Tired",
+    "Talk"
+  ],
+  "expressions": [
+    "Blink",
+    "Smile",
+    "Tired",
+    "Talk"
+  ],
+  "height_m": 1.768
+}

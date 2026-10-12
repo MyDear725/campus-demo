@@ -1,0 +1,48 @@
+2026-10-12 character motion and expression update
+
+Blender 4.5.9 LTS rebuilt campus-traveler.glb and editable .blend.
+18 bones, 8 clips, 4 facial shape keys.
+npm test: 13/13 passed, including actual thigh movement throughout exhaustion recovery and independent facial morphs.
+Browser integration: 32/32 passed (see browser-results.txt).
+Verified: hold Shift until exhausted -> continuous Walk -> Tired when stopped -> Run after 25% recovery; jump and complete quest.
+Browser visual checks: facial close-up Blink and Talk; full-body Tired; no console warnings/errors.
+Limitations: procedural basic expressions (no audio lip sync), no foot IK or cloth simulation.
+
+2026-10-12 development-campus map reconstruction
+Official campus 77298; 27 public feature outlines projected at horizontal scale 0.5.
+17/17 Node tests passed, including shoreline collision and full pedestrian routes.
+Browser integration: 61/61 passed; actual south gate, library, lake, northwest track, return quest and eastern living area traversed.
+Verified M expands shared-coordinate map, three-dimensional aerial, north-up and flat preview.
+Local game and map preview consoles had no errors/warnings.
+Limits: heights/facades/elevation illustrative; roads manually traced; connector is level, not an elevated bridge. Official interactive page timed out; public source API was used.
+
+2026-10-12 camera revision
+- 23 Node tests passed (6 new camera/input tests).
+- Browser integration: 63 checks passed, including >5 continuous orbits through actual scene camera and ground clearance.
+- Esc keeps the game paused even when pressed again; Continue requests pointer capture again.
+- Pointer capture denial and retry hint verified in embedded browser. This embedded browser denies pointer lock; physical endless mouse movement still needs an external Chrome/Edge session.
+- Pointer Lock reference: https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API
+
+2026-10-12 architecture revision
+- All 16 map building footprints now have dedicated exterior profiles, physical window frames/sills, entrances and roof detailing.
+- Removed all building-name sprites in game and 3D map. Names remain in the 2D navigation map and building selection menu.
+- 23 Node tests and all 63 live game integration checks passed. No browser warnings/errors in the updated game.
+- Full-world geometry inspection: 16 buildings, 101 meshes, 21335 instanced parts, no invalid vertices, 19 camera occluders.
+- Visual inspection: information building, library, sports hall, residence; final screenshots saved under screenshots/building-*.png.
+- Sources and modeled/estimated distinctions recorded in art/map-reference/exteriors/sources.json.
+
+2026-10-12 rear-follow camera revision
+- Body heading, movement basis and rear camera share one exponentially smoothed, unwrapped yaw; pitch is smoothed separately.
+- A/D strafe and S backpedals without changing facing. Backpedal reverses stride phase. Esc/dialogue release clears queued turning.
+- 26 Node tests passed; 69 browser integration checks passed (continuous five-turn alignment, A/D/S rear view, W follows facing, pause clears pending rotation).
+- Browser live scripted turn: yaw=facing=1.0549 radians; screenshot rear-follow-camera.png. Physical mouse capture remains unavailable in the embedded browser; this was a scripted-input scene check.
+Environment upgrade — 2026-10-12
+- Replaced faceted tree crowns with four instanced branch/leaf variants (657 trees).
+- Continuous asphalt/paving roads, kerbs, road markings, crossings; original generated material maps.
+- Two lakes share a 512x512 planar reflection pass, animated normal waves, stone banks, reeds and benches.
+- Scattering sky, procedural animated clouds, environment light, fog and distant illustrative terrain.
+- Node test suite: 28/28 passed, including new tree collision route tests and high/low material switching.
+- Browser integration: 69/69 passed with final planted environment; results in browser-results.txt.
+- Browser inspected lake, avenue and third-person entry views. Low then high quality confirmed in rendered diagnostics; no shader/console errors.
+- View screenshots: art/environment/lakeside-preview.png; art/environment/avenue-preview.png.
+- Performance measures: instanced forest, merged static roads/shore props, shared lake reflection, low-quality reflection/shadow fallback. No foreground FPS benchmark claimed.

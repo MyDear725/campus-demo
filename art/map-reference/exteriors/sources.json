@@ -1,0 +1,36 @@
+{
+  "updated": "2026-10-12",
+  "campus": "大连理工大学开发区校区",
+  "reference_pages": [
+    {
+      "url": "https://drise.dlut.edu.cn/rwbJP/rcmj/kfq_____hj.htm",
+      "used_for": "信息楼屋顶框架、教学楼分区、综合楼灰色墙面、体育馆起伏屋顶",
+      "local_files": [
+        "campus0.jpg",
+        "campus1.jpg",
+        "campus2.jpg",
+        "campus3.jpg"
+      ]
+    },
+    {
+      "url": "https://kfqlib.dlut.edu.cn/gqgk/gsfm.htm",
+      "used_for": "图书馆玻璃幕墙、水平遮阳线条、金属竖框",
+      "local_files": [
+        "library3.jpg"
+      ]
+    },
+    {
+      "url": "https://kfqxqzhb.dlut.edu.cn/info/1041/1312.htm",
+      "used_for": "全校建筑体量、图书馆椭圆采光屋顶、生活区色调",
+      "local_files": [
+        "aerial0.jpg"
+      ]
+    }
+  ],
+  "implementation": "原生 Three.js 参数化建筑；原创程序化石材/砖材纹理及环境反射；实景照片仅供建模参考，不作为游戏贴图。",
+  "limitations": [
+    "沿用官方地物平面轮廓，平面约1:2；楼高、楼层比例未测绘。",
+    "宿舍颜色、外机、部分阳台、门窗和屋顶设备依据建筑类型设计，不能视作逐栋实景复原。",
+    "建筑外壳不可入内；新增入口雨棚和门窗为外观细节。"
+  ]
+}
