@@ -33,6 +33,12 @@ export const COLLEGES = [
   },
 ];
 export const DEFAULT_COLLEGE_ID = 'se';
+export const ENROLLMENT_YEAR = 2026;
+export const GENDERS = [
+  { id: 'male', label: '男生', shortLabel: '男' },
+  { id: 'female', label: '女生', shortLabel: '女' },
+];
+export const DEFAULT_GENDER_ID = 'male';
 
 export function collides(x, z, obstacles, radius = 0.43) {
   if (x<MAP_BOUNDS.minX+radius||x>MAP_BOUNDS.maxX-radius||z<MAP_BOUNDS.minZ+radius||z>MAP_BOUNDS.maxZ-radius) return true;
@@ -78,10 +84,40 @@ export function findCollege(collegeOrId) {
   return COLLEGES.find(c => c.id === trimmed || c.name === trimmed || c.shortName === trimmed) || null;
 }
 
+export function findGender(genderOrId) {
+  if (!genderOrId || typeof genderOrId !== 'string') return null;
+  const trimmed = genderOrId.trim();
+  return GENDERS.find(g => g.id === trimmed || g.label === trimmed || g.shortLabel === trimmed) || null;
+}
+
 export function sanitizePlayerName(name) {
   if (typeof name !== 'string') return DEFAULT_PLAYER_NAME;
   const cleaned = name.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 16);
   return cleaned || DEFAULT_PLAYER_NAME;
+}
+
+export function generateStudentId({ year = ENROLLMENT_YEAR, gradeOrder = 1, rng = Math.random } = {}) {
+  const sample = () => { const v = rng(); return Number.isFinite(v) ? Math.max(0, Math.min(0.999999, v)) : 0; };
+  const yearNum = Number.isFinite(Number(year)) ? Math.max(1000, Math.min(9999, Math.floor(Number(year)))) : ENROLLMENT_YEAR;
+  const yearPrefix = String(yearNum).padStart(4, '0');
+  const randomMiddle = String(Math.floor(sample() * 10000)).padStart(4, '0');
+  const orderNum = Number.isFinite(Number(gradeOrder)) ? Math.max(1, Math.min(999, Math.floor(Number(gradeOrder)))) : 1;
+  const orderSuffix = String(orderNum).padStart(3, '0');
+  return `${yearPrefix}${randomMiddle}${orderSuffix}`;
+}
+
+export function parseStudentId(studentId) {
+  if (typeof studentId !== 'string' || !/^\d{11}$/.test(studentId)) return null;
+  const year = Number(studentId.slice(0, 4));
+  const randomCode = studentId.slice(4, 8);
+  const gradeOrder = Number(studentId.slice(8, 11));
+  if (gradeOrder < 1 || gradeOrder > 999) return null;
+  return {
+    year,
+    randomCode,
+    gradeOrder,
+    orderSuffix: studentId.slice(8, 11),
+  };
 }
 
 export function assignDormitory(rng = Math.random) {
@@ -93,11 +129,19 @@ export function assignDormitory(rng = Math.random) {
   return { dormId: dorm.id, dormName: dorm.name, room };
 }
 
-export function freshLifeState(rng = Math.random) {
+export function freshLifeState(rng = Math.random, options = {}) {
   const assigned = assignDormitory(rng);
   const college = findCollege(DEFAULT_COLLEGE_ID) || COLLEGES[0];
+  const gender = findGender(DEFAULT_GENDER_ID) || GENDERS[0];
+  const gradeOrder = Number.isFinite(Number(options.gradeOrder)) ? Math.max(1, Math.min(999, Math.floor(Number(options.gradeOrder)))) : 1;
+  const year = Number.isFinite(Number(options.year)) ? Math.floor(Number(options.year)) : ENROLLMENT_YEAR;
+  const studentId = generateStudentId({ year, gradeOrder, rng });
   return {
     playerName: DEFAULT_PLAYER_NAME,
+    genderId: gender.id,
+    genderLabel: gender.label,
+    studentId,
+    gradeOrder,
     collegeId: college.id,
     collegeName: college.name,
     enrolled: false,
@@ -121,16 +165,24 @@ export function sanitizeLifeState(value, rng = Math.random) {
   const dorm = findDormitory(value.dormId) || findDormitory(fallback.dormId);
   const room = typeof value.room === 'string' && /^\d{3}寝室$/.test(value.room) ? value.room : fallback.room;
   const college = findCollege(value.collegeId) || findCollege(value.collegeName) || findCollege(DEFAULT_COLLEGE_ID) || COLLEGES[0];
+  const gender = findGender(value.genderId) || findGender(value.genderLabel) || findGender(DEFAULT_GENDER_ID) || GENDERS[0];
   const playerName = sanitizePlayerName(value.playerName);
+  const clampInt = (v, min, max, def) => Number.isFinite(Number(v)) ? Math.max(min, Math.min(max, Math.floor(Number(v)))) : def;
+  const parsedId = parseStudentId(value.studentId);
+  const gradeOrder = parsedId ? parsedId.gradeOrder : clampInt(value.gradeOrder, 1, 999, 1);
+  const studentId = parsedId ? value.studentId : generateStudentId({ year: ENROLLMENT_YEAR, gradeOrder, rng });
   const enrolled = value.enrolled === true;
   const prologueCompleted = enrolled && value.prologueCompleted === true;
   const totalMinutes = Number.isFinite(value.totalMinutes)
     ? Math.max(0, Math.min(TOTAL_UNIVERSITY_MINUTES, value.totalMinutes))
     : INITIAL_GAME_MINUTES;
   const timeScale = VALID_TIME_SCALES.includes(Number(value.timeScale)) ? Number(value.timeScale) : DEFAULT_TIME_SCALE;
-  const clampInt = (v, min, max, def) => Number.isFinite(Number(v)) ? Math.max(min, Math.min(max, Math.floor(Number(v)))) : def;
   return {
     playerName,
+    genderId: gender.id,
+    genderLabel: gender.label,
+    studentId,
+    gradeOrder,
     collegeId: college.id,
     collegeName: college.name,
     enrolled,
@@ -148,7 +200,7 @@ export function sanitizeLifeState(value, rng = Math.random) {
   };
 }
 
-export function enrollStudent(lifeState, { playerName, collegeId, collegeName, reassignDorm = false } = {}, rng = Math.random) {
+export function enrollStudent(lifeState, { playerName, genderId, genderLabel, collegeId, collegeName, gradeOrder, studentId, reassignDorm = false } = {}, rng = Math.random) {
   if (!lifeState || typeof lifeState !== 'object') return freshLifeState(rng);
   if (reassignDorm) {
     const assigned = assignDormitory(rng);
@@ -157,7 +209,20 @@ export function enrollStudent(lifeState, { playerName, collegeId, collegeName, r
     lifeState.room = assigned.room;
   }
   const college = findCollege(collegeId) || findCollege(collegeName) || findCollege(lifeState.collegeId) || COLLEGES[0];
+  const gender = findGender(genderId) || findGender(genderLabel) || findGender(lifeState.genderId) || GENDERS[0];
+  const resolvedOrder = Number.isFinite(Number(gradeOrder))
+    ? Math.max(1, Math.min(999, Math.floor(Number(gradeOrder))))
+    : (Number.isFinite(Number(lifeState.gradeOrder)) ? Math.max(1, Math.min(999, Math.floor(Number(lifeState.gradeOrder)))) : 1);
+  const parsed = parseStudentId(studentId);
   lifeState.playerName = sanitizePlayerName(playerName ?? lifeState.playerName);
+  lifeState.genderId = gender.id;
+  lifeState.genderLabel = gender.label;
+  lifeState.gradeOrder = parsed ? parsed.gradeOrder : resolvedOrder;
+  lifeState.studentId = parsed
+    ? studentId
+    : (parseStudentId(lifeState.studentId)?.gradeOrder === lifeState.gradeOrder
+      ? lifeState.studentId
+      : generateStudentId({ year: ENROLLMENT_YEAR, gradeOrder: lifeState.gradeOrder, rng }));
   lifeState.collegeId = college.id;
   lifeState.collegeName = college.name;
   lifeState.enrolled = true;
@@ -167,18 +232,21 @@ export function enrollStudent(lifeState, { playerName, collegeId, collegeName, r
 
 export function buildPrologueScript(lifeState) {
   const name = sanitizePlayerName(lifeState?.playerName);
+  const gender = findGender(lifeState?.genderId) || findGender(lifeState?.genderLabel) || GENDERS[0];
   const college = findCollege(lifeState?.collegeId) || findCollege(lifeState?.collegeName) || COLLEGES[0];
   const dorm = findDormitory(lifeState?.dormId) || DORMITORIES[0];
   const room = lifeState?.room || '301寝室';
+  const studentId = lifeState?.studentId || '20260001001';
+  const childCall = gender.id === 'female' ? '闺女' : '儿子';
   return {
     gateLines: [
       {
         speaker: '父亲',
-        text: `${name}，慢点走，大件行李箱爸帮你拉着。你看，这就是大连理工大学开发区校区了——恭喜你正式成为「${college.name}」的大一新生！`,
+        text: `${name}，慢点走，大件行李箱爸帮你拉着。你看，这就是大连理工大学开发区校区了——恭喜爸的好${childCall}正式成为「${college.name}」的大一新生！`,
       },
       {
         speaker: '母亲',
-        text: `坐了一路车累坏了吧？妈刚看了迎新报到单，学校给你随机分配的宿舍是东侧生活区的「${dorm.name} · ${room}」。走，爸妈先送你去宿舍楼下安顿好！`,
+        text: `坐了一路车累坏了吧？妈刚看了迎新报到单，你的学号是「${studentId}」，随机分配的宿舍在东侧生活区「${dorm.name} · ${room}」。走，爸妈先送你去宿舍楼下安顿好！`,
       },
     ],
     dormLines: [
@@ -194,6 +262,7 @@ export function buildPrologueScript(lifeState) {
     spawnPosition: { x: dorm.x, z: dorm.z },
     dorm,
     college,
+    gender,
   };
 }
 
@@ -209,6 +278,117 @@ export function completePrologue(lifeState) {
     dormName: dorm.name,
     room: lifeState.room,
   };
+}
+
+export function freshSaveRegistry() {
+  return {
+    activeSaveId: null,
+    nextGradeOrder: 1,
+    saves: [],
+  };
+}
+
+export function sanitizeSaveRegistry(raw, rng = Math.random) {
+  if (!raw || typeof raw !== 'object') return freshSaveRegistry();
+  const rawSaves = Array.isArray(raw.saves) ? raw.saves : [];
+  const seenIds = new Set();
+  let maxOrder = 0;
+  const saves = [];
+  for (let i = 0; i < rawSaves.length; i++) {
+    const item = rawSaves[i];
+    if (!item || typeof item !== 'object') continue;
+    const id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `save-${i + 1}`;
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+    const life = sanitizeLifeState(item.life, rng);
+    const progress = sanitizeProgress(item.progress);
+    const dorm = findDormitory(life.dormId) || DORMITORIES[0];
+    const px = Number.isFinite(item.position?.x) ? item.position.x : dorm.x;
+    const pz = Number.isFinite(item.position?.z) ? item.position.z : dorm.z;
+    maxOrder = Math.max(maxOrder, life.gradeOrder || 1);
+    saves.push({
+      id,
+      createdAt: typeof item.createdAt === 'string' ? item.createdAt : '2026-09-01',
+      updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : '2026-09-01',
+      life,
+      progress,
+      position: { x: px, z: pz },
+    });
+  }
+  const nextGradeOrder = Math.max(
+    maxOrder + 1,
+    Number.isFinite(Number(raw.nextGradeOrder)) ? Math.max(1, Math.min(999, Math.floor(Number(raw.nextGradeOrder)))) : 1
+  );
+  const activeSaveId = saves.some(s => s.id === raw.activeSaveId)
+    ? raw.activeSaveId
+    : (saves[0]?.id || null);
+  return {
+    activeSaveId,
+    nextGradeOrder: Math.min(999, nextGradeOrder),
+    saves,
+  };
+}
+
+export function getSaveSlot(registry, saveId = registry?.activeSaveId) {
+  if (!registry || !Array.isArray(registry.saves) || !saveId) return null;
+  return registry.saves.find(s => s.id === saveId) || null;
+}
+
+export function createSaveSlot(registry, { id, life, progress, position } = {}, rng = Math.random) {
+  if (!registry || typeof registry !== 'object') return null;
+  if (!Array.isArray(registry.saves)) registry.saves = [];
+  const gradeOrder = Math.max(1, Math.min(999, Number(life?.gradeOrder) || Number(registry.nextGradeOrder) || (registry.saves.length + 1)));
+  const sanitizedLife = sanitizeLifeState({ ...life, gradeOrder }, rng);
+  if (parseStudentId(sanitizedLife.studentId)?.gradeOrder !== gradeOrder) {
+    sanitizedLife.gradeOrder = gradeOrder;
+    sanitizedLife.studentId = generateStudentId({ year: ENROLLMENT_YEAR, gradeOrder, rng });
+  }
+  const sanitizedProg = sanitizeProgress(progress);
+  const dorm = findDormitory(sanitizedLife.dormId) || DORMITORIES[0];
+  const pos = {
+    x: Number.isFinite(position?.x) ? position.x : dorm.x,
+    z: Number.isFinite(position?.z) ? position.z : dorm.z,
+  };
+  let slotId = typeof id === 'string' && id.trim() ? id.trim() : `save-${Date.now()}-${registry.saves.length + 1}`;
+  while (registry.saves.some(s => s.id === slotId)) {
+    slotId = `${slotId}-${Math.floor(rng() * 1000)}`;
+  }
+  const nowStr = new Date().toISOString();
+  const slot = {
+    id: slotId,
+    createdAt: nowStr,
+    updatedAt: nowStr,
+    life: sanitizedLife,
+    progress: sanitizedProg,
+    position: pos,
+  };
+  registry.saves.unshift(slot);
+  registry.activeSaveId = slot.id;
+  registry.nextGradeOrder = Math.min(999, Math.max(Number(registry.nextGradeOrder) || 1, gradeOrder + 1));
+  return slot;
+}
+
+export function updateSaveSlot(registry, saveId, { life, progress, position } = {}, rng = Math.random) {
+  const slot = getSaveSlot(registry, saveId);
+  if (!slot) return null;
+  if (life) slot.life = sanitizeLifeState(life, rng);
+  if (progress) slot.progress = sanitizeProgress(progress);
+  if (position && Number.isFinite(position.x) && Number.isFinite(position.z)) {
+    slot.position = { x: position.x, z: position.z };
+  }
+  slot.updatedAt = new Date().toISOString();
+  return slot;
+}
+
+export function deleteSaveSlot(registry, saveId) {
+  if (!registry || !Array.isArray(registry.saves) || !saveId) return false;
+  const idx = registry.saves.findIndex(s => s.id === saveId);
+  if (idx < 0) return false;
+  registry.saves.splice(idx, 1);
+  if (registry.activeSaveId === saveId) {
+    registry.activeSaveId = registry.saves[0]?.id || null;
+  }
+  return true;
 }
 
 export function advanceGameTime(lifeState, realDeltaSeconds) {

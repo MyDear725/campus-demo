@@ -3,7 +3,7 @@ import { buildCampus } from './campus-world.js';
 import { createAtmosphere } from './atmosphere.js';
 import { GUIDE, BOARD, MEMORY_SPOTS, DORMITORIES, QUEST_ROUTES, campusArea } from './campus-layout.js';
 import { drawCampusMap } from './campus-map.js';
-import { START, COLLEGES, findCollege, sanitizePlayerName, assignDormitory, enrollStudent, buildPrologueScript, completePrologue, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest, findDormitory, freshLifeState, sanitizeLifeState, advanceGameTime, formatGameClock, planSleepSchedule, executeSleep, daylightProfile } from './logic.js';
+import { START, COLLEGES, GENDERS, ENROLLMENT_YEAR, findCollege, findGender, sanitizePlayerName, generateStudentId, parseStudentId, assignDormitory, enrollStudent, buildPrologueScript, completePrologue, freshSaveRegistry, sanitizeSaveRegistry, getSaveSlot, createSaveSlot, updateSaveSlot, deleteSaveSlot, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest, findDormitory, freshLifeState, sanitizeLifeState, advanceGameTime, formatGameClock, planSleepSchedule, executeSleep, daylightProfile } from './logic.js';
 import { upgradeAvatar } from './avatar.js';
 import { updateEnergy, movementAction, resolveKeyCode, WALK_SPEED, RUN_SPEED } from './motion.js';
 import { createMouseLook, rotateLook, smoothLook, orbitOffset, followDistance } from './camera-controls.js';
@@ -140,17 +140,34 @@ for(const list of batches.values()){
   batch.computeBoundingSphere();scene.add(batch);
 }
 
-let progress=freshProgress(),life=freshLifeState();
+let progress=freshProgress(),life=freshLifeState(),saveRegistry=freshSaveRegistry();
 try{progress=sanitizeProgress(JSON.parse(localStorage.getItem('campus-echo-v1')));}catch{}
 try{
   const rawLife=localStorage.getItem('campus-echo-life-v1');
   if(rawLife)life=sanitizeLifeState(JSON.parse(rawLife));
-  else localStorage.setItem('campus-echo-life-v1',JSON.stringify(life));
 }catch{}
-let storageAvailable=true,qaRunning=false;
-function save(){
+try{
+  const rawSaves=localStorage.getItem('campus-echo-saves-v1');
+  if(rawSaves){
+    saveRegistry=sanitizeSaveRegistry(JSON.parse(rawSaves));
+  }else if(life.enrolled){
+    createSaveSlot(saveRegistry,{life,progress});
+    localStorage.setItem('campus-echo-saves-v1',JSON.stringify(saveRegistry));
+  }
+  const activeSlot=getSaveSlot(saveRegistry);
+  if(activeSlot){
+    life=sanitizeLifeState(activeSlot.life);
+    progress=sanitizeProgress(activeSlot.progress);
+    if(Number.isFinite(activeSlot.position?.x)&&Number.isFinite(activeSlot.position?.z)){
+      hero.g.position.set(activeSlot.position.x,.1,activeSlot.position.z);
+    }
+  }
+}catch{}
+let storageAvailable=true,qaRunning=false,previousScreenMode='start';
+function persistRegistry(){
   if(qaRunning)return;
   try{
+    localStorage.setItem('campus-echo-saves-v1',JSON.stringify(saveRegistry));
     localStorage.setItem('campus-echo-v1',JSON.stringify(progress));
     localStorage.setItem('campus-echo-life-v1',JSON.stringify(life));
   }catch{
@@ -158,15 +175,26 @@ function save(){
     storageAvailable=false;
   }
 }
+function save(){
+  if(qaRunning)return;
+  if(saveRegistry.activeSaveId){
+    updateSaveSlot(saveRegistry,saveRegistry.activeSaveId,{
+      life,
+      progress,
+      position:{x:hero.g.position.x,z:hero.g.position.z},
+    });
+  }
+  persistRegistry();
+}
 function updateStartScreenHint(){
-  if(life.enrolled&&life.prologueCompleted){
-    const myDorm=findDormitory(life.dormId);
-    if(myDorm)hero.g.position.set(myDorm.x,.1,myDorm.z);
-    $('start-button').innerHTML='继续大学生活 <span>→</span>';
-    $('saved-hint').textContent=`${life.playerName} · ${life.collegeName} · 宿舍：${life.dormName} ${life.room}（已存 ${progress.collected.length}/3 记忆）`;
+  const count=saveRegistry.saves.length;
+  if($('open-saves-button'))$('open-saves-button').textContent=`存档管理（共 ${count} 个存档 · 创建 / 读取 / 删除）`;
+  if(life.enrolled&&life.prologueCompleted&&saveRegistry.activeSaveId){
+    $('start-button').innerHTML='继续当前存档 <span>→</span>';
+    $('saved-hint').textContent=`当前存档：${life.playerName}（${life.genderLabel} · 学号 ${life.studentId}） · ${life.collegeName} · ${life.dormName} ${life.room}`;
   }else{
-    $('start-button').innerHTML='办理入学报到 <span>→</span>';
-    $('saved-hint').textContent=`预分配宿舍：${life.dormName} · ${life.room} · 点击创建新生档案并开启父母送学剧情`;
+    $('start-button').innerHTML='创建新存档 · 办理入学 <span>→</span>';
+    $('saved-hint').textContent=`下一位入学新生年级顺序：${String(saveRegistry.nextGradeOrder).padStart(3,'0')} · 点击创建角色并开启父母送学剧情`;
   }
 }
 setParentsStage('hidden');
@@ -183,11 +211,12 @@ if($('time-scale'))$('time-scale').value=String(life.timeScale);
 function updateProfileHUD(){
   const info=formatGameClock(life.totalMinutes);
   const name=sanitizePlayerName(life.playerName);
+  const gender=findGender(life.genderId)||findGender(life.genderLabel)||GENDERS[0];
   const college=findCollege(life.collegeId)||findCollege(life.collegeName)||COLLEGES[0];
   if($('player-portrait'))$('player-portrait').textContent=name.charAt(0)||'学';
-  if($('player-name-display'))$('player-name-display').textContent=name;
+  if($('player-name-display'))$('player-name-display').textContent=`${name}（${gender.shortLabel} · ${life.studentId}）`;
   if($('player-college-display'))$('player-college-display').textContent=`${college.name} · ${info.yearName}学生`;
-  if($('college-badge'))$('college-badge').textContent=college.name;
+  if($('college-badge'))$('college-badge').textContent=`${college.name} · ${life.studentId}`;
 }
 function updateDormVisuals(){
   for(const d of dormSpots){
@@ -200,6 +229,7 @@ function updateDormVisuals(){
   const myDorm=findDormitory(life.dormId);
   if($('dorm-badge'))$('dorm-badge').textContent=`⌂ ${myDorm?myDorm.shortName:life.dormName} · ${life.room}`;
   if($('enrollment-dorm-preview'))$('enrollment-dorm-preview').textContent=`入学随机分配宿舍：${life.dormName} · ${life.room}`;
+  if($('enrollment-student-id'))$('enrollment-student-id').textContent=`入学学号：${life.studentId}（${ENROLLMENT_YEAR}级 · 年级顺序 ${String(life.gradeOrder).padStart(3,'0')}）`;
   updateProfileHUD();
 }
 function updateTimeHUD(){
@@ -248,6 +278,7 @@ function play(){
   mode='play';
   $('start-screen').classList.add('hidden');
   $('character-screen')?.classList.add('hidden');
+  $('save-screen')?.classList.add('hidden');
   $('pause-screen').classList.add('hidden');
   $('dorm-screen')?.classList.add('hidden');
   $('completion').classList.add('hidden');
@@ -264,17 +295,116 @@ function selectCollegeUI(collegeId){
     btn.classList.toggle('active',btn.dataset.college===college.id);
   });
 }
-function openCharacterScreen(){
+function selectGenderUI(genderId){
+  const gender=findGender(genderId)||GENDERS[0];
+  if($('player-gender-select'))$('player-gender-select').value=gender.id;
+  document.querySelectorAll('.gender-card').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.gender===gender.id);
+  });
+}
+function openCharacterScreen(fromMode=mode){
+  previousScreenMode=fromMode==='pause'||fromMode==='saves'?fromMode:'start';
   mode='create';unlock();
   $('start-screen').classList.add('hidden');
+  $('save-screen')?.classList.add('hidden');
   $('pause-screen').classList.add('hidden');
   $('dorm-screen')?.classList.add('hidden');
   $('completion').classList.add('hidden');
+  // Prepare a fresh candidate state with the next gradeOrder and a new random 11-digit student ID
+  const nextOrder=saveRegistry.nextGradeOrder||1;
+  life=freshLifeState(Math.random,{gradeOrder:nextOrder,year:ENROLLMENT_YEAR});
+  progress=freshProgress();
   if($('player-name-input'))$('player-name-input').value=life.playerName||'林风';
+  selectGenderUI(life.genderId);
   selectCollegeUI(life.collegeId);
   updateDormVisuals();
   $('character-screen')?.classList.remove('hidden');
   setTimeout(()=>$('player-name-input')?.focus(),30);
+}
+function loadSaveById(saveId){
+  const slot=getSaveSlot(saveRegistry,saveId);
+  if(!slot)return;
+  saveRegistry.activeSaveId=slot.id;
+  life=sanitizeLifeState(slot.life);
+  progress=sanitizeProgress(slot.progress);
+  if($('time-scale'))$('time-scale').value=String(life.timeScale);
+  const myDorm=findDormitory(life.dormId)||DORMITORIES[0];
+  const px=Number.isFinite(slot.position?.x)?slot.position.x:myDorm.x;
+  const pz=Number.isFinite(slot.position?.z)?slot.position.z:myDorm.z;
+  hero.g.position.set(px,.1,pz);
+  velocityY=0;grounded=true;stamina=100;exhausted=false;landing=0;
+  resetLook();
+  persistRegistry();
+  updateStartScreenHint();
+  if(!life.prologueCompleted){
+    startParentPrologue();
+  }else{
+    play();
+    toast(`已读取存档：${life.playerName}（${life.genderLabel} · 学号 ${life.studentId} · ${life.collegeName}）`);
+  }
+}
+function renderSaveList(){
+  const listEl=$('save-list');
+  if(!listEl)return;
+  if(!saveRegistry.saves.length){
+    listEl.innerHTML='<div class="save-empty">当前暂无存档。点击下方「+ 创建新存档」办理新生入学，生成你的专属学号与校园档案。</div>';
+    return;
+  }
+  listEl.innerHTML=saveRegistry.saves.map(slot=>{
+    const l=slot.life;
+    const p=slot.progress;
+    const clockInfo=formatGameClock(l.totalMinutes);
+    const isCurrent=slot.id===saveRegistry.activeSaveId;
+    return `<div class="save-card ${isCurrent?'active':''}" role="listitem" data-save-id="${slot.id}">
+      <div class="save-card-info">
+        <strong>${l.playerName}（${l.genderLabel}） · 学号 ${l.studentId} ${isCurrent?'[当前存档]':''}</strong>
+        <small>${l.collegeName} · 分配宿舍：${l.dormName} ${l.room}</small>
+        <small>时间进度：${clockInfo.summary}（第 ${clockInfo.totalDays}/${clockInfo.maxDays} 天） · 校园记忆 ${p.collected.length}/3</small>
+      </div>
+      <div class="save-card-actions">
+        <button type="button" class="mini-button" data-save-action="load" data-save-id="${slot.id}">读取存档</button>
+        <button type="button" class="danger-button" data-save-action="delete" data-save-id="${slot.id}">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+  listEl.querySelectorAll('button[data-save-action]').forEach(btn=>{
+    btn.onclick=()=>{
+      const targetId=btn.dataset.saveId;
+      const action=btn.dataset.saveAction;
+      if(action==='load'){
+        loadSaveById(targetId);
+      }else if(action==='delete'){
+        const targetSlot=getSaveSlot(saveRegistry,targetId);
+        const deletedName=targetSlot?`${targetSlot.life.playerName}（${targetSlot.life.studentId}）`:'存档';
+        if(deleteSaveSlot(saveRegistry,targetId)){
+          const nextActive=getSaveSlot(saveRegistry);
+          if(nextActive){
+            life=sanitizeLifeState(nextActive.life);
+            progress=sanitizeProgress(nextActive.progress);
+          }else{
+            life=freshLifeState(Math.random,{gradeOrder:saveRegistry.nextGradeOrder});
+            progress=freshProgress();
+          }
+          persistRegistry();
+          updateDormVisuals();
+          updateTimeHUD();
+          updateStartScreenHint();
+          renderSaveList();
+          toast(`已删除存档：${deletedName}`);
+        }
+      }
+    };
+  });
+}
+function openSaveScreen(fromMode=mode){
+  previousScreenMode=fromMode==='pause'?'pause':'start';
+  mode='saves';unlock();
+  $('start-screen').classList.add('hidden');
+  $('character-screen')?.classList.add('hidden');
+  $('pause-screen').classList.add('hidden');
+  $('dorm-screen')?.classList.add('hidden');
+  renderSaveList();
+  $('save-screen')?.classList.remove('hidden');
 }
 function speak(speaker,lines,callback=null){
   mode='dialogue';unlock();
@@ -304,6 +434,7 @@ function nextDialogue(){
 }
 function startParentPrologue(){
   $('character-screen')?.classList.add('hidden');
+  $('save-screen')?.classList.add('hidden');
   $('start-screen').classList.add('hidden');
   $('pause-screen').classList.add('hidden');
   $('hud').classList.remove('hidden');
@@ -332,7 +463,7 @@ function startParentPrologue(){
       save();
       updateStartScreenHint();
       play();
-      toast(`欢迎你，${life.collegeName}新生 ${life.playerName}！已从「${life.dormName} · ${life.room}」开启四年大学生活`);
+      toast(`欢迎你，${life.collegeName}新生 ${life.playerName}（学号 ${life.studentId}）！已从「${life.dormName} · ${life.room}」开启四年大学生活`);
     });
   });
 }
@@ -353,7 +484,7 @@ function updateSleepPreview(){
 function openDormScreen(){
   mode='dorm';unlock();
   const info=formatGameClock(life.totalMinutes);
-  $('dorm-title').textContent=`${life.dormName} · ${life.room}（${life.playerName} · ${life.collegeName}）`;
+  $('dorm-title').textContent=`${life.dormName} · ${life.room}（${life.playerName} · 学号 ${life.studentId}）`;
   $('dorm-status-text').textContent=`当前校园时间：${info.summary}（${info.season}季 · 四年总第 ${info.totalDays} / ${info.maxDays} 天）。你可以自由安排作息时间，或查看整栋宿舍楼室内交互预留。`;
   $('sleep-mode').value='now';
   $('sleep-hour').value=String(life.sleepHour);
@@ -374,7 +505,7 @@ function teleportToAssignedDorm(){
 }
 function interact(){if(!closest||mode!=='play')return;
   if(closest.type==='guide'){
-    if(!progress.started)speak('小岚 · 校园向导',[`${life.playerName}同学你好！欢迎来到${life.collegeName}。我正在整理一封写给未来的信，但还少了三段最重要的校园记忆。`,'去图书馆前寻找「求知」，去涌泉湖畔寻找「相遇」，去西北田径场寻找「热爱」。靠近发光的记忆，按 E 就能收集。','不必赶路。记得看看树影，也听听自己的脚步。找到三段记忆后，回到这里找我。'],()=>{progress.started=true;save();toast('任务已开启：寻找三段校园记忆');});
+    if(!progress.started)speak('小岚 · 校园向导',[`${life.playerName}同学（学号 ${life.studentId}）你好！欢迎来到${life.collegeName}。我正在整理一封写给未来的信，但还少了三段最重要的校园记忆。`,'去图书馆前寻找「求知」，去涌泉湖畔寻找「相遇」，去西北田径场寻找「热爱」。靠近发光的记忆，按 E 就能收集。','不必赶路。记得看看树影，也听听自己的脚步。找到三段记忆后，回到这里找我。'],()=>{progress.started=true;save();toast('任务已开启：寻找三段校园记忆');});
     else if(progress.completed)speak('小岚 · 校园向导',['谢谢你。这封信已经寄给未来，接下来的路，属于自由漫步的你。']);
     else if(progress.collected.length===3)speak('小岚 · 校园向导',['求知让我们走向远方，相遇让路途有了温度，热爱让每一天都值得奔赴。','你带回的三段记忆，已经组成了一封完整的信。愿未来的你，仍然记得此刻的风。'],()=>{if(finishQuest(progress)){save();mode='complete';unlock();$('completion').classList.remove('hidden');chime();}});
     else speak('小岚 · 校园向导',[`你已经找到了 ${progress.collected.length} 段记忆。剩下的地点已标在右上角地图上，沿着道路走就能抵达。`]);
@@ -386,9 +517,9 @@ function interact(){if(!closest||mode!=='play')return;
     if(closest.isAssigned){
       openDormScreen();
     }else{
-      speak('宿舍门禁 · '+closest.data.name,[`这里是「${closest.data.name}」，门禁识别显示你是「${life.collegeName}」的 ${life.playerName}，入学分配宿舍为「${life.dormName} · ${life.room}」。`,'你可以沿着生活区步道前往自己的宿舍楼，或者按 H 键快速抵达分配宿舍楼下。']);
+      speak('宿舍门禁 · '+closest.data.name,[`这里是「${closest.data.name}」，门禁识别显示你是「${life.collegeName}」的 ${life.playerName}（学号 ${life.studentId}），入学分配宿舍为「${life.dormName} · ${life.room}」。`,'你可以沿着生活区步道前往自己的宿舍楼，或者按 H 键快速抵达分配宿舍楼下。']);
     }
-  }else speak('校园导览',[`${life.playerName}同学（${life.collegeName}），这里是开发区校区南门。你的入学分配宿舍为「${life.dormName} · ${life.room}」（位于学府大街东侧生活区，可按 H 快速抵达或按 M 查看地图）。`,'图书馆与信息楼在东南部，两座湖在中部，教学楼在北部，田径场在西北。']);
+  }else speak('校园导览',[`${life.playerName}同学（${life.collegeName} · 学号 ${life.studentId}），这里是开发区校区南门。你的入学分配宿舍为「${life.dormName} · ${life.room}」（位于学府大街东侧生活区，可按 H 快速抵达或按 M 查看地图）。`,'图书馆与信息楼在东南部，两座湖在中部，教学楼在北部，田径场在西北。']);
 }
 function updateQuest(){
   for(const m of memories){const found=progress.collected.includes(m.id);m.mesh.visible=!found;m.ring.visible=!found;m.label.visible=!found;}
@@ -420,14 +551,25 @@ function updateInteraction(){
   const target=nearestTarget();$('distance').textContent=progress.completed?`我的宿舍：${life.dormName} ${life.room}`:`${target.area||target.name} · ${Math.round(Math.hypot(p.x-target.x,p.z-target.z))} m`;
   $('area').textContent=campusArea(p.x,p.z);
 }
-const RANDOM_NAMES=['林风','苏晴','陈默','周予安','沈知夏','顾言','许星河','陆景行','宋清禾','江屿'];
+const RANDOM_NAMES_MALE=['林风','陈默','周予安','顾言','许星河','陆景行','江屿'];
+const RANDOM_NAMES_FEMALE=['苏晴','沈知夏','宋清禾','林语桐','夏晚星','温知意','叶清浅'];
 document.querySelectorAll('.college-card').forEach(btn=>{
   btn.onclick=()=>selectCollegeUI(btn.dataset.college);
 });
+document.querySelectorAll('.gender-card').forEach(btn=>{
+  btn.onclick=()=>selectGenderUI(btn.dataset.gender);
+});
 if($('player-college-select'))$('player-college-select').onchange=e=>selectCollegeUI(e.target.value);
+if($('player-gender-select'))$('player-gender-select').onchange=e=>selectGenderUI(e.target.value);
 if($('random-name-btn'))$('random-name-btn').onclick=()=>{
-  const pick=RANDOM_NAMES[Math.floor(Math.random()*RANDOM_NAMES.length)];
+  const gId=$('player-gender-select')?.value||'male';
+  const pool=gId==='female'?RANDOM_NAMES_FEMALE:RANDOM_NAMES_MALE;
+  const pick=pool[Math.floor(Math.random()*pool.length)];
   if($('player-name-input'))$('player-name-input').value=pick;
+};
+if($('reroll-student-id-btn'))$('reroll-student-id-btn').onclick=()=>{
+  life.studentId=generateStudentId({year:ENROLLMENT_YEAR,gradeOrder:life.gradeOrder});
+  updateDormVisuals();
 };
 if($('reroll-dorm-btn'))$('reroll-dorm-btn').onclick=()=>{
   const assigned=assignDormitory();
@@ -436,22 +578,54 @@ if($('reroll-dorm-btn'))$('reroll-dorm-btn').onclick=()=>{
 };
 if($('cancel-enrollment'))$('cancel-enrollment').onclick=()=>{
   $('character-screen')?.classList.add('hidden');
-  $('start-screen').classList.remove('hidden');
-  mode='start';
+  const activeSlot=getSaveSlot(saveRegistry);
+  if(activeSlot){
+    life=sanitizeLifeState(activeSlot.life);
+    progress=sanitizeProgress(activeSlot.progress);
+    updateDormVisuals();
+  }
+  if(previousScreenMode==='saves')openSaveScreen('start');
+  else if(previousScreenMode==='pause'){mode='pause';$('pause-screen').classList.remove('hidden');}
+  else{$('start-screen').classList.remove('hidden');mode='start';}
 };
 if($('confirm-enrollment'))$('confirm-enrollment').onclick=()=>{
   const rawName=$('player-name-input')?.value||'';
+  const genderId=$('player-gender-select')?.value||'male';
   const collegeId=$('player-college-select')?.value||'se';
-  enrollStudent(life,{playerName:rawName,collegeId});
-  save();
+  enrollStudent(life,{
+    playerName:rawName,
+    genderId,
+    collegeId,
+    gradeOrder:life.gradeOrder,
+    studentId:life.studentId,
+  });
+  progress=freshProgress();
+  const myDorm=findDormitory(life.dormId)||DORMITORIES[0];
+  createSaveSlot(saveRegistry,{
+    life,
+    progress,
+    position:{x:myDorm.x,z:myDorm.z},
+  });
+  persistRegistry();
+  updateStartScreenHint();
   startParentPrologue();
 };
-$('start-button').onclick=()=>{
-  if(life.enrolled&&life.prologueCompleted){
-    play();
-    toast(`欢迎回到校园，${life.collegeName} · ${life.playerName}（宿舍：${life.dormName} ${life.room}）`);
+if($('open-saves-button'))$('open-saves-button').onclick=()=>openSaveScreen('start');
+if($('pause-saves-button'))$('pause-saves-button').onclick=()=>openSaveScreen('pause');
+if($('create-new-save-btn'))$('create-new-save-btn').onclick=()=>openCharacterScreen('saves');
+if($('close-saves-btn'))$('close-saves-btn').onclick=()=>{
+  $('save-screen')?.classList.add('hidden');
+  if(previousScreenMode==='pause'&&saveRegistry.activeSaveId){
+    mode='pause';$('pause-screen').classList.remove('hidden');
   }else{
-    openCharacterScreen();
+    mode='start';$('start-screen').classList.remove('hidden');
+  }
+};
+$('start-button').onclick=()=>{
+  if(life.enrolled&&life.prologueCompleted&&saveRegistry.activeSaveId){
+    loadSaveById(saveRegistry.activeSaveId);
+  }else{
+    openCharacterScreen('start');
   }
 };
 $('pause').onclick=pause;$('resume').onclick=play;$('keep-exploring').onclick=play;$('dialogue-next').onclick=nextDialogue;
@@ -484,15 +658,7 @@ $('dorm-enter-building').onclick=()=>{
   ]);
 };
 $('restart').onclick=()=>{
-  progress=freshProgress();
-  life=freshLifeState();
-  if($('time-scale'))$('time-scale').value=String(life.timeScale);
-  save();
-  hero.g.position.set(START.x,.1,START.z);
-  velocityY=0;grounded=true;stamina=100;exhausted=false;landing=0;
-  resetLook();
-  updateStartScreenHint();
-  openCharacterScreen();
+  openCharacterScreen('pause');
 };
 $('quality').onchange=e=>{const high=e.target.value==='high';campus.landscape.setQuality(high);renderer.shadowMap.enabled=high;renderer.setPixelRatio(high?Math.min(devicePixelRatio,1.6):1);scene.traverse(o=>{if(o.material)o.material.needsUpdate=true;});};
 if($('time-scale'))$('time-scale').onchange=e=>{life.timeScale=Number(e.target.value)||60;save();toast(`时间流速已调整为 1 : ${life.timeScale}`);};
@@ -507,7 +673,7 @@ window.addEventListener('keydown',e=>{
   }
   if(!e.metaKey&&!e.ctrlKey&&['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','KeyE','KeyH','KeyM','KeyR','Escape'].includes(code))e.preventDefault?.();
   // Escape and pointerlockchange may arrive in either order. Never resume on Escape.
-  if(code==='Escape'){if(mode==='play')pause();else if(mode==='dorm')play();else if(mode==='create')$('cancel-enrollment')?.click();return;}
+  if(code==='Escape'){if(mode==='play')pause();else if(mode==='dorm')play();else if(mode==='create')$('cancel-enrollment')?.click();else if(mode==='saves')$('close-saves-btn')?.click();return;}
   if(mode==='create'){if(!e.repeat&&code==='Enter')$('confirm-enrollment')?.click();return;}
   if(mode==='dialogue'){if(!e.repeat&&['KeyE','Enter','Space'].includes(code))nextDialogue();return;}
   if(mode==='dorm'){if(!e.repeat&&code==='Enter')$('dorm-sleep-confirm').click();return;}
@@ -576,7 +742,7 @@ function tick(){
   requestAnimationFrame(tick);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;frameCount++;
   if(mode==='play'&&lookPreviewTime>0){turnView(-190*dt,0);lookPreviewTime=Math.max(0,lookPreviewTime-dt);}
   stepPlayer(dt);
-  if(['play','start','create','dialogue','dorm','complete'].includes(mode)){
+  if(['play','start','create','saves','dialogue','dorm','complete'].includes(mode)){
     const spk=$('speaker').textContent||'';
     const guideTalking=mode==='dialogue'&&spk.startsWith('小岚');
     const fatherTalking=mode==='dialogue'&&spk.startsWith('父亲');
@@ -587,7 +753,8 @@ function tick(){
     if(mother.g.visible)mother.updateModel?.(dt,motherTalking?'Talk':'Idle',{smile:true,talking:motherTalking});
     if(mode!=='play')hero.updateModel?.(dt,exhausted?'Tired':'Idle',{exhausted,smile:mode==='dialogue'||mode==='complete'});
   }
-  if(mode==='start'||mode==='create'){
+  const overviewMode=mode==='start'||mode==='create'||(mode==='saves'&&previousScreenMode!=='pause');
+  if(overviewMode){
     camera.position.set(285+Math.sin(elapsed*.055)*12,330,440);camera.lookAt(0,0,20);
   }else{
     updateCamera(dt);
@@ -603,9 +770,9 @@ function tick(){
     renderer.toneMappingExposure=light.exposure;
     scene.fog.color.set(light.fogColor);
   }
-  const shadowExtent=mode==='start'||mode==='create'?340:95;
+  const shadowExtent=overviewMode?340:95;
   if(sun.shadow.camera.right!==shadowExtent){Object.assign(sun.shadow.camera,{left:-shadowExtent,right:shadowExtent,top:shadowExtent,bottom:-shadowExtent});sun.shadow.camera.updateProjectionMatrix();}
-  const shadowX=mode==='start'||mode==='create'?0:hero.g.position.x,shadowZ=mode==='start'||mode==='create'?0:hero.g.position.z;
+  const shadowX=overviewMode?0:hero.g.position.x,shadowZ=overviewMode?0:hero.g.position.z;
   const sunOff=qaRunning?{x:-150,y:350,z:180}:light.sunOffset;
   sun.position.set(shadowX+sunOff.x,sunOff.y,shadowZ+sunOff.z);sun.target.position.set(shadowX,0,shadowZ);
   if(toastTimer>0&&performance.now()>toastTimer){toastTimer=0;$('toast').classList.remove('visible');}

@@ -58,7 +58,7 @@ test('macOS native app launcher bridges all movement and interaction keys withou
   assert.ok(src.includes('event.type == NSEventTypeMouseMoved'), 'mouse deltaX/deltaY must only be accessed on mouse events');
   assert.ok(src.includes('isTextInputActive'), 'missing text input passthrough for typing player name');
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  for (const text of ['id="character-screen"', 'id="player-name-input"', '国际信息与软件学院', '软件学院', '集成电路学院']) {
+  for (const text of ['id="character-screen"', 'id="save-screen"', 'id="player-name-input"', 'id="player-gender-select"', 'id="enrollment-student-id"', '国际信息与软件学院', '软件学院', '集成电路学院', '男生', '女生']) {
     assert.ok(html.includes(text), `index.html missing ${text}`);
   }
 });
