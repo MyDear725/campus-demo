@@ -10,6 +10,9 @@ if(!await ready()){
   for(let i=0;i<40&&!await ready();i++)await new Promise(resolve=>setTimeout(resolve,200));
 }
 if(await ready()){
-  execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Start-Process 'http://127.0.0.1:4173'"],{windowsHide:true},error=>{if(error){console.error('请手动打开：'+url);process.exitCode=1;}});
+  const onOpenError=error=>{if(error){console.error('请手动打开：'+url);process.exitCode=1;}};
+  if(process.platform==='darwin')execFile('open',['-a',path.join(root,'启动校园Demo.app')],err=>{if(err)execFile('open',[url],onOpenError);});
+  else if(process.platform==='win32')execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',`Start-Process '${url}'`],{windowsHide:true},onOpenError);
+  else execFile('xdg-open',[url],onOpenError);
   console.log('校园 Demo 已启动：'+url);
 }else{console.error('无法启动 Demo，可能是 4173 端口已被其他程序占用。');process.exitCode=1;}
