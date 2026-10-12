@@ -31,6 +31,7 @@ static NSString *KeyCodeToDOMCode(unsigned short keyCode) {
 @property (strong, nonatomic) WKWebView *webView;
 @property (strong, nonatomic) NSTask *serverTask;
 @property (assign, nonatomic) BOOL isPointerLocked;
+@property (assign, nonatomic) BOOL isTextInputActive;
 @property (assign, nonatomic) BOOL cursorHidden;
 @property (strong, nonatomic) id eventMonitor;
 @property (assign, nonatomic) NSInteger port;
@@ -77,6 +78,7 @@ static NSString *KeyCodeToDOMCode(unsigned short keyCode) {
 
 - (void)setPointerLock:(BOOL)locked notifyJS:(BOOL)notifyJS {
   if (locked) {
+    self.isTextInputActive = NO;
     [self.window makeFirstResponder:self.webView];
     if (!self.isPointerLocked) {
       self.isPointerLocked = YES;
@@ -116,6 +118,8 @@ static NSString *KeyCodeToDOMCode(unsigned short keyCode) {
     [self setPointerLock:YES notifyJS:NO];
   } else if ([action isEqualToString:@"unlock"]) {
     [self setPointerLock:NO notifyJS:NO];
+  } else if ([action isEqualToString:@"textInput"]) {
+    self.isTextInputActive = [message.body[@"active"] boolValue];
   }
 }
 
@@ -243,6 +247,15 @@ static NSString *KeyCodeToDOMCode(unsigned short keyCode) {
       "}"
       "if (wasLocked) { document.dispatchEvent(new Event('pointerlockchange')); }"
     "};"
+    "const syncTextInput = function() {"
+      "const tag = document.activeElement && document.activeElement.tagName;"
+      "const active = tag === 'INPUT' || tag === 'TEXTAREA';"
+      "if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pointerLock) {"
+        "window.webkit.messageHandlers.pointerLock.postMessage({ action: 'textInput', active: !!active });"
+      "}"
+    "};"
+    "document.addEventListener('focusin', syncTextInput, true);"
+    "document.addEventListener('focusout', function() { setTimeout(syncTextInput, 0); }, true);"
   "})();";
 
   WKUserScript *userScript = [[WKUserScript alloc] initWithSource:js injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES];
@@ -276,6 +289,9 @@ static NSString *KeyCodeToDOMCode(unsigned short keyCode) {
       if ((event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) != 0) {
         return event;
       }
+      if (strongSelf.isTextInputActive && !strongSelf.isPointerLocked) {
+        return event;
+      }
       if (event.keyCode == 53 && strongSelf.isPointerLocked) {
         [strongSelf setPointerLock:NO notifyJS:YES];
       }
@@ -289,6 +305,9 @@ static NSString *KeyCodeToDOMCode(unsigned short keyCode) {
     }
 
     if (event.type == NSEventTypeKeyUp) {
+      if (strongSelf.isTextInputActive && !strongSelf.isPointerLocked) {
+        return event;
+      }
       NSString *code = KeyCodeToDOMCode(event.keyCode);
       if (code) {
         NSString *call = [NSString stringWithFormat:@"window.__onNativeKey && window.__onNativeKey('keyup', '%@', false);", code];

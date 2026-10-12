@@ -56,4 +56,9 @@ test('macOS native app launcher bridges all movement and interaction keys withou
   assert.ok(src.includes('window.__onNativeKey'), 'missing native key bridge function');
   assert.ok(src.includes('NSEventTypeKeyDown') && src.includes('NSEventTypeKeyUp') && src.includes('NSEventTypeFlagsChanged'), 'missing keyDown/keyUp/flagsChanged handling');
   assert.ok(src.includes('event.type == NSEventTypeMouseMoved'), 'mouse deltaX/deltaY must only be accessed on mouse events');
+  assert.ok(src.includes('isTextInputActive'), 'missing text input passthrough for typing player name');
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  for (const text of ['id="character-screen"', 'id="player-name-input"', '国际信息与软件学院', '软件学院', '集成电路学院']) {
+    assert.ok(html.includes(text), `index.html missing ${text}`);
+  }
 });

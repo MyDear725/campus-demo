@@ -11,6 +11,28 @@ export const TOTAL_UNIVERSITY_MINUTES = TOTAL_UNIVERSITY_DAYS * MINUTES_PER_DAY;
 export const INITIAL_GAME_MINUTES = 8 * 60;
 export const DEFAULT_TIME_SCALE = 60;
 export const VALID_TIME_SCALES = [1, 30, 60, 180, 360];
+export const DEFAULT_PLAYER_NAME = '林风';
+export const COLLEGES = [
+  {
+    id: 'dii',
+    name: '国际信息与软件学院',
+    shortName: '国软学院',
+    description: '立足国际化软件工程视野，培养跨文化数字与信息创新人才。',
+  },
+  {
+    id: 'se',
+    name: '软件学院',
+    shortName: '软件学院',
+    description: '深耕软件架构、算法与智能系统工程，用代码构筑数字世界。',
+  },
+  {
+    id: 'ic',
+    name: '集成电路学院',
+    shortName: '集电学院',
+    description: '方寸芯片之间见天地，聚焦微纳电子与集成电路核心技术。',
+  },
+];
+export const DEFAULT_COLLEGE_ID = 'se';
 
 export function collides(x, z, obstacles, radius = 0.43) {
   if (x<MAP_BOUNDS.minX+radius||x>MAP_BOUNDS.maxX-radius||z<MAP_BOUNDS.minZ+radius||z>MAP_BOUNDS.maxZ-radius) return true;
@@ -50,6 +72,18 @@ export function findDormitory(dormId) {
   return DORMITORIES.find(d => d.id === dormId) || null;
 }
 
+export function findCollege(collegeOrId) {
+  if (!collegeOrId || typeof collegeOrId !== 'string') return null;
+  const trimmed = collegeOrId.trim();
+  return COLLEGES.find(c => c.id === trimmed || c.name === trimmed || c.shortName === trimmed) || null;
+}
+
+export function sanitizePlayerName(name) {
+  if (typeof name !== 'string') return DEFAULT_PLAYER_NAME;
+  const cleaned = name.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 16);
+  return cleaned || DEFAULT_PLAYER_NAME;
+}
+
 export function assignDormitory(rng = Math.random) {
   const sample = () => { const v = rng(); return Number.isFinite(v) ? Math.max(0, Math.min(0.999999, v)) : 0; };
   const dorm = DORMITORIES[Math.floor(sample() * DORMITORIES.length)];
@@ -61,7 +95,13 @@ export function assignDormitory(rng = Math.random) {
 
 export function freshLifeState(rng = Math.random) {
   const assigned = assignDormitory(rng);
+  const college = findCollege(DEFAULT_COLLEGE_ID) || COLLEGES[0];
   return {
+    playerName: DEFAULT_PLAYER_NAME,
+    collegeId: college.id,
+    collegeName: college.name,
+    enrolled: false,
+    prologueCompleted: false,
     totalMinutes: INITIAL_GAME_MINUTES,
     timeScale: DEFAULT_TIME_SCALE,
     dormId: assigned.dormId,
@@ -80,12 +120,21 @@ export function sanitizeLifeState(value, rng = Math.random) {
   if (!value || typeof value !== 'object') return fallback;
   const dorm = findDormitory(value.dormId) || findDormitory(fallback.dormId);
   const room = typeof value.room === 'string' && /^\d{3}寝室$/.test(value.room) ? value.room : fallback.room;
+  const college = findCollege(value.collegeId) || findCollege(value.collegeName) || findCollege(DEFAULT_COLLEGE_ID) || COLLEGES[0];
+  const playerName = sanitizePlayerName(value.playerName);
+  const enrolled = value.enrolled === true;
+  const prologueCompleted = enrolled && value.prologueCompleted === true;
   const totalMinutes = Number.isFinite(value.totalMinutes)
     ? Math.max(0, Math.min(TOTAL_UNIVERSITY_MINUTES, value.totalMinutes))
     : INITIAL_GAME_MINUTES;
   const timeScale = VALID_TIME_SCALES.includes(Number(value.timeScale)) ? Number(value.timeScale) : DEFAULT_TIME_SCALE;
   const clampInt = (v, min, max, def) => Number.isFinite(Number(v)) ? Math.max(min, Math.min(max, Math.floor(Number(v)))) : def;
   return {
+    playerName,
+    collegeId: college.id,
+    collegeName: college.name,
+    enrolled,
+    prologueCompleted,
     totalMinutes,
     timeScale,
     dormId: dorm.id,
@@ -96,6 +145,69 @@ export function sanitizeLifeState(value, rng = Math.random) {
     wakeHour: clampInt(value.wakeHour, 0, 23, 7),
     wakeMinute: clampInt(value.wakeMinute, 0, 59, 30),
     sleepCount: clampInt(value.sleepCount, 0, 10000, 0),
+  };
+}
+
+export function enrollStudent(lifeState, { playerName, collegeId, collegeName, reassignDorm = false } = {}, rng = Math.random) {
+  if (!lifeState || typeof lifeState !== 'object') return freshLifeState(rng);
+  if (reassignDorm) {
+    const assigned = assignDormitory(rng);
+    lifeState.dormId = assigned.dormId;
+    lifeState.dormName = assigned.dormName;
+    lifeState.room = assigned.room;
+  }
+  const college = findCollege(collegeId) || findCollege(collegeName) || findCollege(lifeState.collegeId) || COLLEGES[0];
+  lifeState.playerName = sanitizePlayerName(playerName ?? lifeState.playerName);
+  lifeState.collegeId = college.id;
+  lifeState.collegeName = college.name;
+  lifeState.enrolled = true;
+  lifeState.prologueCompleted = false;
+  return lifeState;
+}
+
+export function buildPrologueScript(lifeState) {
+  const name = sanitizePlayerName(lifeState?.playerName);
+  const college = findCollege(lifeState?.collegeId) || findCollege(lifeState?.collegeName) || COLLEGES[0];
+  const dorm = findDormitory(lifeState?.dormId) || DORMITORIES[0];
+  const room = lifeState?.room || '301寝室';
+  return {
+    gateLines: [
+      {
+        speaker: '父亲',
+        text: `${name}，慢点走，大件行李箱爸帮你拉着。你看，这就是大连理工大学开发区校区了——恭喜你正式成为「${college.name}」的大一新生！`,
+      },
+      {
+        speaker: '母亲',
+        text: `坐了一路车累坏了吧？妈刚看了迎新报到单，学校给你随机分配的宿舍是东侧生活区的「${dorm.name} · ${room}」。走，爸妈先送你去宿舍楼下安顿好！`,
+      },
+    ],
+    dormLines: [
+      {
+        speaker: '母亲',
+        text: `到了，这就是「${dorm.name}」！床铺和日用品妈都帮你收拾妥当了。在「${college.name}」读书虽然充实，但一定要按时作息、照顾好自己。`,
+      },
+      {
+        speaker: '父亲',
+        text: `大学四年一共 1440 天，从今天起，什么时间休息、怎样探索这座校园，都由你自己掌舵了。去吧，${name}，从「${dorm.name} · ${room}」开启你的大学生活，爸妈这就返程了！`,
+      },
+    ],
+    spawnPosition: { x: dorm.x, z: dorm.z },
+    dorm,
+    college,
+  };
+}
+
+export function completePrologue(lifeState) {
+  if (!lifeState || typeof lifeState !== 'object') return null;
+  const dorm = findDormitory(lifeState.dormId) || DORMITORIES[0];
+  lifeState.enrolled = true;
+  lifeState.prologueCompleted = true;
+  return {
+    x: dorm.x,
+    z: dorm.z,
+    dormId: dorm.id,
+    dormName: dorm.name,
+    room: lifeState.room,
   };
 }
 

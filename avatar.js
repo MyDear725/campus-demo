@@ -14,10 +14,12 @@ export async function upgradeAvatar(character, variant = 'traveler') {
     // NPCs share the new mesh and skeleton while keeping distinguishable clothes.
     if (variant !== 'traveler') {
       object.material = object.material.clone();
-      if (object.material.name === 'Jacket_midnight_teal') object.material.color.set(variant === 'guide' ? '#9c805e' : '#8e5143');
+      const coatColors = { guide: '#9c805e', student: '#8e5143', father: '#3b5669', mother: '#a45b53' };
+      if (object.material.name === 'Jacket_midnight_teal') object.material.color.set(coatColors[variant] || '#8e5143');
     }
   });
-  const animator = createCharacterAnimator(model, gltf.animations, variant === 'guide' ? 1.1 : variant === 'student' ? 2.3 : 0);
+  const phaseOffsets = { guide: 1.1, student: 2.3, father: 0.6, mother: 1.7 };
+  const animator = createCharacterAnimator(model, gltf.animations, phaseOffsets[variant] || 0);
   character.g.clear();
   character.g.add(model);
   character.updateModel = animator.update;

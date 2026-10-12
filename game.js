@@ -3,7 +3,7 @@ import { buildCampus } from './campus-world.js';
 import { createAtmosphere } from './atmosphere.js';
 import { GUIDE, BOARD, MEMORY_SPOTS, DORMITORIES, QUEST_ROUTES, campusArea } from './campus-layout.js';
 import { drawCampusMap } from './campus-map.js';
-import { START, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest, findDormitory, freshLifeState, sanitizeLifeState, advanceGameTime, formatGameClock, planSleepSchedule, executeSleep, daylightProfile } from './logic.js';
+import { START, COLLEGES, findCollege, sanitizePlayerName, assignDormitory, enrollStudent, buildPrologueScript, completePrologue, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest, findDormitory, freshLifeState, sanitizeLifeState, advanceGameTime, formatGameClock, planSleepSchedule, executeSleep, daylightProfile } from './logic.js';
 import { upgradeAvatar } from './avatar.js';
 import { updateEnergy, movementAction, resolveKeyCode, WALK_SPEED, RUN_SPEED } from './motion.js';
 import { createMouseLook, rotateLook, smoothLook, orbitOffset, followDistance } from './camera-controls.js';
@@ -85,7 +85,22 @@ const guide=character('#e5d5b3','#6c9588');guide.g.position.set(GUIDE.x,.1,GUIDE
 label('校园向导 · 小岚',GUIDE.x,3.3,GUIDE.z,5,null,'#fff5d8',38);
 // One quiet background student adds scale without requiring crowd AI.
 const student=character('#9c6754','#e8c89b');student.g.position.set(63,.1,-40);student.g.rotation.y=.9;
-Promise.all([upgradeAvatar(hero),upgradeAvatar(guide,'guide'),upgradeAvatar(student,'student')]).then(()=>{
+const father=character('#3b5669','#d6bc8b');father.g.position.set(START.x-1.15,.1,START.z-2.2);father.g.rotation.y=Math.PI;
+const mother=character('#a45b53','#f0dec0');mother.g.position.set(START.x+1.15,.1,START.z-2.2);mother.g.rotation.y=Math.PI;
+const fatherLabel=label('父亲 · 送学陪伴',START.x-1.15,3.25,START.z-2.2,4.4,'#244b48','#ffe7a8',32);
+const motherLabel=label('母亲 · 送学陪伴',START.x+1.15,3.25,START.z-2.2,4.4,'#244b48','#ffe7a8',32);
+function setParentsStage(stage='hidden',spot=START){
+  const visible=stage==='gate'||stage==='dorm';
+  father.g.visible=visible;mother.g.visible=visible;
+  fatherLabel.visible=visible;motherLabel.visible=visible;
+  if(!visible)return;
+  const zOffset=stage==='gate'?-2.2:-1.9;
+  father.g.position.set(spot.x-1.1,.1,spot.z+zOffset);father.g.rotation.y=Math.PI;
+  mother.g.position.set(spot.x+1.1,.1,spot.z+zOffset);mother.g.rotation.y=Math.PI;
+  fatherLabel.position.set(spot.x-1.1,3.25,spot.z+zOffset);
+  motherLabel.position.set(spot.x+1.1,3.25,spot.z+zOffset);
+}
+Promise.all([upgradeAvatar(hero),upgradeAvatar(guide,'guide'),upgradeAvatar(student,'student'),upgradeAvatar(father,'father'),upgradeAvatar(mother,'mother')]).then(()=>{
   canvas.dataset.character='blender-skinned';
 }).catch(error=>{canvas.dataset.character='fallback';console.error('Character model failed to load',error);toast('角色模型加载失败，请刷新重试。');});
 
@@ -143,8 +158,19 @@ function save(){
     storageAvailable=false;
   }
 }
-if(progress.started){$('start-button').innerHTML='继续旅程 <span>→</span>';$('saved-hint').textContent=`已保存 ${progress.collected.length} / 3 枚记忆 · 分配宿舍：${life.dormName} ${life.room}`;}
-else{$('saved-hint').textContent=`入学分配宿舍：${life.dormName} · ${life.room} · 点击启程捕获鼠标`;}
+function updateStartScreenHint(){
+  if(life.enrolled&&life.prologueCompleted){
+    const myDorm=findDormitory(life.dormId);
+    if(myDorm)hero.g.position.set(myDorm.x,.1,myDorm.z);
+    $('start-button').innerHTML='继续大学生活 <span>→</span>';
+    $('saved-hint').textContent=`${life.playerName} · ${life.collegeName} · 宿舍：${life.dormName} ${life.room}（已存 ${progress.collected.length}/3 记忆）`;
+  }else{
+    $('start-button').innerHTML='办理入学报到 <span>→</span>';
+    $('saved-hint').textContent=`预分配宿舍：${life.dormName} · ${life.room} · 点击创建新生档案并开启父母送学剧情`;
+  }
+}
+setParentsStage('hidden');
+updateStartScreenHint();
 
 for(const selId of ['sleep-hour','wake-hour']){
   const sel=$(selId);
@@ -154,6 +180,15 @@ for(const selId of ['sleep-hour','wake-hour']){
 }
 if($('time-scale'))$('time-scale').value=String(life.timeScale);
 
+function updateProfileHUD(){
+  const info=formatGameClock(life.totalMinutes);
+  const name=sanitizePlayerName(life.playerName);
+  const college=findCollege(life.collegeId)||findCollege(life.collegeName)||COLLEGES[0];
+  if($('player-portrait'))$('player-portrait').textContent=name.charAt(0)||'学';
+  if($('player-name-display'))$('player-name-display').textContent=name;
+  if($('player-college-display'))$('player-college-display').textContent=`${college.name} · ${info.yearName}学生`;
+  if($('college-badge'))$('college-badge').textContent=college.name;
+}
 function updateDormVisuals(){
   for(const d of dormSpots){
     const isMine=d.id===life.dormId;
@@ -164,10 +199,16 @@ function updateDormVisuals(){
   }
   const myDorm=findDormitory(life.dormId);
   if($('dorm-badge'))$('dorm-badge').textContent=`⌂ ${myDorm?myDorm.shortName:life.dormName} · ${life.room}`;
+  if($('enrollment-dorm-preview'))$('enrollment-dorm-preview').textContent=`入学随机分配宿舍：${life.dormName} · ${life.room}`;
+  updateProfileHUD();
 }
 function updateTimeHUD(){
   const info=formatGameClock(life.totalMinutes);
   if($('clock-display'))$('clock-display').textContent=`${info.summary} · ${info.period}`;
+  if($('player-college-display')){
+    const college=findCollege(life.collegeId)||findCollege(life.collegeName)||COLLEGES[0];
+    $('player-college-display').textContent=`${college.name} · ${info.yearName}学生`;
+  }
 }
 updateDormVisuals();updateTimeHUD();
 
@@ -203,8 +244,98 @@ const mouseLook=createMouseLook(canvas,{
 function unlock(){targetYaw=yaw;targetPitch=pitch;mouseLook.unlock();keys.clear();$('capture-hint').classList.add('hidden');}
 function lock(){if(!qaRunning)mouseLook.lock();}
 $('capture-retry').onclick=()=>{canvas.focus({preventScroll:true});lock();};
-function play(){mode='play';$('start-screen').classList.add('hidden');$('pause-screen').classList.add('hidden');$('dorm-screen')?.classList.add('hidden');$('completion').classList.add('hidden');$('hud').classList.remove('hidden');keys.clear();canvas.focus({preventScroll:true});lock();updateQuest();updateTimeHUD();updateDormVisuals();}
+function play(){
+  mode='play';
+  $('start-screen').classList.add('hidden');
+  $('character-screen')?.classList.add('hidden');
+  $('pause-screen').classList.add('hidden');
+  $('dorm-screen')?.classList.add('hidden');
+  $('completion').classList.add('hidden');
+  $('hud').classList.remove('hidden');
+  setParentsStage('hidden');
+  keys.clear();canvas.focus({preventScroll:true});lock();
+  updateQuest();updateTimeHUD();updateDormVisuals();
+}
 function pause(){if(mode!=='play')return;mode='pause';unlock();$('pause-screen').classList.remove('hidden');$('interact').classList.add('hidden');}
+function selectCollegeUI(collegeId){
+  const college=findCollege(collegeId)||COLLEGES[0];
+  if($('player-college-select'))$('player-college-select').value=college.id;
+  document.querySelectorAll('.college-card').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.college===college.id);
+  });
+}
+function openCharacterScreen(){
+  mode='create';unlock();
+  $('start-screen').classList.add('hidden');
+  $('pause-screen').classList.add('hidden');
+  $('dorm-screen')?.classList.add('hidden');
+  $('completion').classList.add('hidden');
+  if($('player-name-input'))$('player-name-input').value=life.playerName||'林风';
+  selectCollegeUI(life.collegeId);
+  updateDormVisuals();
+  $('character-screen')?.classList.remove('hidden');
+  setTimeout(()=>$('player-name-input')?.focus(),30);
+}
+function speak(speaker,lines,callback=null){
+  mode='dialogue';unlock();
+  dialogueQueue=lines.map(item=>typeof item==='string'?{speaker,text:item}:{speaker:item.speaker||speaker,text:item.text});
+  dialogueCallback=callback;
+  $('dialogue').classList.remove('hidden');
+  $('interact').classList.add('hidden');
+  nextDialogue();
+}
+function speakSequence(entries,callback=null){
+  const firstSpeaker=entries[0]?.speaker||'校园旁白';
+  speak(firstSpeaker,entries,callback);
+}
+function nextDialogue(){
+  if(dialogueQueue.length){
+    const current=dialogueQueue.shift();
+    if(current.speaker)$('speaker').textContent=current.speaker;
+    $('dialogue-text').textContent=current.text;
+    $('dialogue-next').innerHTML=(dialogueQueue.length?'继续':'完成对话')+' <span>→</span>';
+    return;
+  }
+  $('dialogue').classList.add('hidden');
+  const cb=dialogueCallback;dialogueCallback=null;
+  mode='play';cb?.();
+  if(mode==='play')lock();
+  updateQuest();
+}
+function startParentPrologue(){
+  $('character-screen')?.classList.add('hidden');
+  $('start-screen').classList.add('hidden');
+  $('pause-screen').classList.add('hidden');
+  $('hud').classList.remove('hidden');
+  const script=buildPrologueScript(life);
+  hero.g.position.set(START.x,.1,START.z);
+  velocityY=0;grounded=true;landing=0;
+  resetLook(0,.26);
+  setParentsStage('gate',START);
+  updateDormVisuals();updateTimeHUD();updateInteraction();drawMap();
+  chime();
+  toast(`大一新生报到日 · 父母陪你抵达开发区校区南门`);
+  speakSequence(script.gateLines,()=>{
+    // Transition to assigned dormitory entrance with parents
+    const dormSpot=script.dorm;
+    hero.g.position.set(dormSpot.x,.1,dormSpot.z);
+    velocityY=0;grounded=true;landing=0;
+    resetLook(0,.26);
+    setParentsStage('dorm',dormSpot);
+    updateInteraction();drawMap();
+    chime();
+    toast(`父母陪你来到了分配宿舍：${life.dormName} · ${life.room}`);
+    speakSequence(script.dormLines,()=>{
+      const startPos=completePrologue(life);
+      if(startPos)hero.g.position.set(startPos.x,.1,startPos.z);
+      setParentsStage('hidden');
+      save();
+      updateStartScreenHint();
+      play();
+      toast(`欢迎你，${life.collegeName}新生 ${life.playerName}！已从「${life.dormName} · ${life.room}」开启四年大学生活`);
+    });
+  });
+}
 function updateSleepPreview(){
   if(!$('sleep-preview'))return;
   const sleepNow=$('sleep-mode').value==='now';
@@ -222,7 +353,7 @@ function updateSleepPreview(){
 function openDormScreen(){
   mode='dorm';unlock();
   const info=formatGameClock(life.totalMinutes);
-  $('dorm-title').textContent=`${life.dormName} · ${life.room}`;
+  $('dorm-title').textContent=`${life.dormName} · ${life.room}（${life.playerName} · ${life.collegeName}）`;
   $('dorm-status-text').textContent=`当前校园时间：${info.summary}（${info.season}季 · 四年总第 ${info.totalDays} / ${info.maxDays} 天）。你可以自由安排作息时间，或查看整栋宿舍楼室内交互预留。`;
   $('sleep-mode').value='now';
   $('sleep-hour').value=String(life.sleepHour);
@@ -241,11 +372,9 @@ function teleportToAssignedDorm(){
   play();
   toast(`已抵达分配宿舍：${life.dormName} · ${life.room}（按 E 进入宿舍交互）`);
 }
-function speak(speaker,lines,callback=null){mode='dialogue';unlock();$('speaker').textContent=speaker;dialogueQueue=[...lines];dialogueCallback=callback;$('dialogue').classList.remove('hidden');$('interact').classList.add('hidden');nextDialogue();}
-function nextDialogue(){if(dialogueQueue.length){$('dialogue-text').textContent=dialogueQueue.shift();$('dialogue-next').innerHTML=(dialogueQueue.length?'继续':'收好这段记忆')+' <span>→</span>';return;}$('dialogue').classList.add('hidden');const cb=dialogueCallback;dialogueCallback=null;mode='play';cb?.();if(mode==='play')lock();updateQuest();}
 function interact(){if(!closest||mode!=='play')return;
   if(closest.type==='guide'){
-    if(!progress.started)speak('小岚 · 校园向导',['欢迎来到这里。我正在整理一封写给未来的信，但还少了三段最重要的校园记忆。','去图书馆前寻找「求知」，去涌泉湖畔寻找「相遇」，去西北田径场寻找「热爱」。靠近发光的记忆，按 E 就能收集。','不必赶路。记得看看树影，也听听自己的脚步。找到三段记忆后，回到这里找我。'],()=>{progress.started=true;save();toast('任务已开启：寻找三段校园记忆');});
+    if(!progress.started)speak('小岚 · 校园向导',[`${life.playerName}同学你好！欢迎来到${life.collegeName}。我正在整理一封写给未来的信，但还少了三段最重要的校园记忆。`,'去图书馆前寻找「求知」，去涌泉湖畔寻找「相遇」，去西北田径场寻找「热爱」。靠近发光的记忆，按 E 就能收集。','不必赶路。记得看看树影，也听听自己的脚步。找到三段记忆后，回到这里找我。'],()=>{progress.started=true;save();toast('任务已开启：寻找三段校园记忆');});
     else if(progress.completed)speak('小岚 · 校园向导',['谢谢你。这封信已经寄给未来，接下来的路，属于自由漫步的你。']);
     else if(progress.collected.length===3)speak('小岚 · 校园向导',['求知让我们走向远方，相遇让路途有了温度，热爱让每一天都值得奔赴。','你带回的三段记忆，已经组成了一封完整的信。愿未来的你，仍然记得此刻的风。'],()=>{if(finishQuest(progress)){save();mode='complete';unlock();$('completion').classList.remove('hidden');chime();}});
     else speak('小岚 · 校园向导',[`你已经找到了 ${progress.collected.length} 段记忆。剩下的地点已标在右上角地图上，沿着道路走就能抵达。`]);
@@ -257,9 +386,9 @@ function interact(){if(!closest||mode!=='play')return;
     if(closest.isAssigned){
       openDormScreen();
     }else{
-      speak('宿舍门禁 · '+closest.data.name,[`这里是「${closest.data.name}」，刷卡显示你的入学分配宿舍为「${life.dormName} · ${life.room}」。`,'你可以沿着生活区步道前往自己的宿舍楼，或者按 H 键快速抵达分配宿舍楼下。']);
+      speak('宿舍门禁 · '+closest.data.name,[`这里是「${closest.data.name}」，门禁识别显示你是「${life.collegeName}」的 ${life.playerName}，入学分配宿舍为「${life.dormName} · ${life.room}」。`,'你可以沿着生活区步道前往自己的宿舍楼，或者按 H 键快速抵达分配宿舍楼下。']);
     }
-  }else speak('校园导览',[`这里是开发区校区南门。你的入学分配宿舍为「${life.dormName} · ${life.room}」（位于学府大街东侧生活区，可按 H 快速抵达或按 M 查看地图）。`,'图书馆与信息楼在东南部，两座湖在中部，教学楼在北部，田径场在西北。']);
+  }else speak('校园导览',[`${life.playerName}同学（${life.collegeName}），这里是开发区校区南门。你的入学分配宿舍为「${life.dormName} · ${life.room}」（位于学府大街东侧生活区，可按 H 快速抵达或按 M 查看地图）。`,'图书馆与信息楼在东南部，两座湖在中部，教学楼在北部，田径场在西北。']);
 }
 function updateQuest(){
   for(const m of memories){const found=progress.collected.includes(m.id);m.mesh.visible=!found;m.ring.visible=!found;m.label.visible=!found;}
@@ -291,7 +420,41 @@ function updateInteraction(){
   const target=nearestTarget();$('distance').textContent=progress.completed?`我的宿舍：${life.dormName} ${life.room}`:`${target.area||target.name} · ${Math.round(Math.hypot(p.x-target.x,p.z-target.z))} m`;
   $('area').textContent=campusArea(p.x,p.z);
 }
-$('start-button').onclick=()=>{play();toast(`欢迎入学！已分配至 ${life.dormName} ${life.room} · 按 H 可直达宿舍`);};$('pause').onclick=pause;$('resume').onclick=play;$('keep-exploring').onclick=play;$('dialogue-next').onclick=nextDialogue;
+const RANDOM_NAMES=['林风','苏晴','陈默','周予安','沈知夏','顾言','许星河','陆景行','宋清禾','江屿'];
+document.querySelectorAll('.college-card').forEach(btn=>{
+  btn.onclick=()=>selectCollegeUI(btn.dataset.college);
+});
+if($('player-college-select'))$('player-college-select').onchange=e=>selectCollegeUI(e.target.value);
+if($('random-name-btn'))$('random-name-btn').onclick=()=>{
+  const pick=RANDOM_NAMES[Math.floor(Math.random()*RANDOM_NAMES.length)];
+  if($('player-name-input'))$('player-name-input').value=pick;
+};
+if($('reroll-dorm-btn'))$('reroll-dorm-btn').onclick=()=>{
+  const assigned=assignDormitory();
+  life.dormId=assigned.dormId;life.dormName=assigned.dormName;life.room=assigned.room;
+  updateDormVisuals();
+};
+if($('cancel-enrollment'))$('cancel-enrollment').onclick=()=>{
+  $('character-screen')?.classList.add('hidden');
+  $('start-screen').classList.remove('hidden');
+  mode='start';
+};
+if($('confirm-enrollment'))$('confirm-enrollment').onclick=()=>{
+  const rawName=$('player-name-input')?.value||'';
+  const collegeId=$('player-college-select')?.value||'se';
+  enrollStudent(life,{playerName:rawName,collegeId});
+  save();
+  startParentPrologue();
+};
+$('start-button').onclick=()=>{
+  if(life.enrolled&&life.prologueCompleted){
+    play();
+    toast(`欢迎回到校园，${life.collegeName} · ${life.playerName}（宿舍：${life.dormName} ${life.room}）`);
+  }else{
+    openCharacterScreen();
+  }
+};
+$('pause').onclick=pause;$('resume').onclick=play;$('keep-exploring').onclick=play;$('dialogue-next').onclick=nextDialogue;
 $('go-dorm').onclick=teleportToAssignedDorm;
 $('sleep-mode').onchange=updateSleepPreview;
 $('sleep-hour').onchange=updateSleepPreview;
@@ -320,14 +483,32 @@ $('dorm-enter-building').onclick=()=>{
     '【开发阶段说明】当前版本已完成「入学随机分配宿舍 + 靠近对应宿舍交互 + 四年时间与自由睡眠作息」核心闭环；整栋宿舍楼内部的多层走廊、寝室书桌与室友室内移动交互将在后续阶段开放。'
   ]);
 };
-$('restart').onclick=()=>{progress=freshProgress();life=freshLifeState();if($('time-scale'))$('time-scale').value=String(life.timeScale);save();hero.g.position.set(START.x,.1,START.z);velocityY=0;grounded=true;stamina=100;exhausted=false;landing=0;resetLook();play();toast(`重新入学！本次随机分配至：${life.dormName} · ${life.room}`);};
+$('restart').onclick=()=>{
+  progress=freshProgress();
+  life=freshLifeState();
+  if($('time-scale'))$('time-scale').value=String(life.timeScale);
+  save();
+  hero.g.position.set(START.x,.1,START.z);
+  velocityY=0;grounded=true;stamina=100;exhausted=false;landing=0;
+  resetLook();
+  updateStartScreenHint();
+  openCharacterScreen();
+};
 $('quality').onchange=e=>{const high=e.target.value==='high';campus.landscape.setQuality(high);renderer.shadowMap.enabled=high;renderer.setPixelRatio(high?Math.min(devicePixelRatio,1.6):1);scene.traverse(o=>{if(o.material)o.material.needsUpdate=true;});};
 if($('time-scale'))$('time-scale').onchange=e=>{life.timeScale=Number(e.target.value)||60;save();toast(`时间流速已调整为 1 : ${life.timeScale}`);};
 window.addEventListener('keydown',e=>{
+  const activeTag=document.activeElement?.tagName;
+  const isTyping=activeTag==='INPUT'||activeTag==='TEXTAREA';
   const code=resolveKeyCode(e);if(!code)return;
+  if(isTyping){
+    if(code==='Escape'){document.activeElement.blur();return;}
+    if(code==='Enter'&&mode==='create'&&!e.repeat){e.preventDefault?.();$('confirm-enrollment')?.click();}
+    return;
+  }
   if(!e.metaKey&&!e.ctrlKey&&['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','KeyE','KeyH','KeyM','KeyR','Escape'].includes(code))e.preventDefault?.();
   // Escape and pointerlockchange may arrive in either order. Never resume on Escape.
-  if(code==='Escape'){if(mode==='play')pause();else if(mode==='dorm')play();return;}
+  if(code==='Escape'){if(mode==='play')pause();else if(mode==='dorm')play();else if(mode==='create')$('cancel-enrollment')?.click();return;}
+  if(mode==='create'){if(!e.repeat&&code==='Enter')$('confirm-enrollment')?.click();return;}
   if(mode==='dialogue'){if(!e.repeat&&['KeyE','Enter','Space'].includes(code))nextDialogue();return;}
   if(mode==='dorm'){if(!e.repeat&&code==='Enter')$('dorm-sleep-confirm').click();return;}
   if(mode==='start'){if(!e.repeat&&['Enter','Space'].includes(code))$('start-button').click();return;}
@@ -395,12 +576,18 @@ function tick(){
   requestAnimationFrame(tick);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;frameCount++;
   if(mode==='play'&&lookPreviewTime>0){turnView(-190*dt,0);lookPreviewTime=Math.max(0,lookPreviewTime-dt);}
   stepPlayer(dt);
-  if(['play','start','dialogue','dorm','complete'].includes(mode)){
-    const guideTalking=mode==='dialogue'&&$('speaker').textContent.startsWith('小岚');
-    guide.updateModel?.(dt,guideTalking?'Talk':'Idle',{smile:true,talking:guideTalking});student.updateModel?.(dt);
+  if(['play','start','create','dialogue','dorm','complete'].includes(mode)){
+    const spk=$('speaker').textContent||'';
+    const guideTalking=mode==='dialogue'&&spk.startsWith('小岚');
+    const fatherTalking=mode==='dialogue'&&spk.startsWith('父亲');
+    const motherTalking=mode==='dialogue'&&spk.startsWith('母亲');
+    guide.updateModel?.(dt,guideTalking?'Talk':'Idle',{smile:true,talking:guideTalking});
+    student.updateModel?.(dt);
+    if(father.g.visible)father.updateModel?.(dt,fatherTalking?'Talk':'Idle',{smile:true,talking:fatherTalking});
+    if(mother.g.visible)mother.updateModel?.(dt,motherTalking?'Talk':'Idle',{smile:true,talking:motherTalking});
     if(mode!=='play')hero.updateModel?.(dt,exhausted?'Tired':'Idle',{exhausted,smile:mode==='dialogue'||mode==='complete'});
   }
-  if(mode==='start'){
+  if(mode==='start'||mode==='create'){
     camera.position.set(285+Math.sin(elapsed*.055)*12,330,440);camera.lookAt(0,0,20);
   }else{
     updateCamera(dt);
@@ -416,9 +603,9 @@ function tick(){
     renderer.toneMappingExposure=light.exposure;
     scene.fog.color.set(light.fogColor);
   }
-  const shadowExtent=mode==='start'?340:95;
+  const shadowExtent=mode==='start'||mode==='create'?340:95;
   if(sun.shadow.camera.right!==shadowExtent){Object.assign(sun.shadow.camera,{left:-shadowExtent,right:shadowExtent,top:shadowExtent,bottom:-shadowExtent});sun.shadow.camera.updateProjectionMatrix();}
-  const shadowX=mode==='start'?0:hero.g.position.x,shadowZ=mode==='start'?0:hero.g.position.z;
+  const shadowX=mode==='start'||mode==='create'?0:hero.g.position.x,shadowZ=mode==='start'||mode==='create'?0:hero.g.position.z;
   const sunOff=qaRunning?{x:-150,y:350,z:180}:light.sunOffset;
   sun.position.set(shadowX+sunOff.x,sunOff.y,shadowZ+sunOff.z);sun.target.position.set(shadowX,0,shadowZ);
   if(toastTimer>0&&performance.now()>toastTimer){toastTimer=0;$('toast').classList.remove('visible');}

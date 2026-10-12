@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   collides, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest, MEMORY_IDS,
   MINUTES_PER_DAY, DAYS_PER_YEAR, TOTAL_UNIVERSITY_MINUTES, INITIAL_GAME_MINUTES,
+  COLLEGES, DEFAULT_PLAYER_NAME, findCollege, sanitizePlayerName,
   findDormitory, assignDormitory, freshLifeState, sanitizeLifeState,
+  enrollStudent, buildPrologueScript, completePrologue,
   advanceGameTime, formatGameClock, planSleepSchedule, executeSleep, daylightProfile
 } from '../logic.js';
 import { DORMITORIES } from '../campus-layout.js';
@@ -30,6 +32,36 @@ test('enrollment randomly assigns one of the 6 campus dormitories and sanitizes 
   assert.equal(sanitized.timeScale,60);
   assert.equal(sanitized.sleepHour,23);
   assert.equal(sanitized.wakeHour,0);
+});
+test('character creation supports student name and the three colleges, and parent prologue spawns at assigned dormitory',()=>{
+  assert.deepEqual(COLLEGES.map(c=>c.name),['国际信息与软件学院','软件学院','集成电路学院']);
+  assert.equal(sanitizePlayerName('   '),DEFAULT_PLAYER_NAME);
+  assert.equal(sanitizePlayerName('  苏晴\n '), '苏晴');
+  for(const expectedName of ['国际信息与软件学院','软件学院','集成电路学院']){
+    const college=findCollege(expectedName);
+    assert.ok(college);
+    assert.equal(college.name,expectedName);
+  }
+  const life=freshLifeState(()=>0.4); // dorm-3
+  assert.equal(life.enrolled,false);
+  assert.equal(life.prologueCompleted,false);
+  enrollStudent(life,{playerName:'沈知夏',collegeName:'集成电路学院'});
+  assert.equal(life.playerName,'沈知夏');
+  assert.equal(life.collegeId,'ic');
+  assert.equal(life.collegeName,'集成电路学院');
+  assert.equal(life.enrolled,true);
+  assert.equal(life.prologueCompleted,false);
+  const script=buildPrologueScript(life);
+  assert.equal(script.gateLines.length,2);
+  assert.equal(script.dormLines.length,2);
+  assert.ok(script.gateLines[0].text.includes('沈知夏')&&script.gateLines[0].text.includes('集成电路学院'));
+  assert.ok(script.gateLines[1].text.includes(life.dormName)&&script.gateLines[1].text.includes(life.room));
+  assert.ok(script.dormLines[0].text.includes(life.dormName)&&script.dormLines[1].text.includes('沈知夏'));
+  const startSpot=completePrologue(life);
+  assert.equal(life.prologueCompleted,true);
+  const assignedDorm=findDormitory(life.dormId);
+  assert.equal(startSpot.x,assignedDorm.x);
+  assert.equal(startSpot.z,assignedDorm.z);
 });
 test('4-year university time converts real seconds by ratio and formats year, season, day, and clock',()=>{
   const life=freshLifeState(()=>0);
