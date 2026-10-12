@@ -9,6 +9,7 @@ static NSString *KeyCodeToDOMCode(unsigned short keyCode) {
     case 1:  return @"KeyS";
     case 2:  return @"KeyD";
     case 14: return @"KeyE";
+    case 4:  return @"KeyH";
     case 46: return @"KeyM";
     case 15: return @"KeyR";
     case 49: return @"Space";

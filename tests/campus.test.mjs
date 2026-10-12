@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAMPUS_FEATURES, GUIDE, CAMPUS_START, MEMORY_SPOTS, QUEST_ROUTES, campusObstacles, featureCenter, pointInPolygon } from '../campus-layout.js';
+import { CAMPUS_FEATURES, GUIDE, CAMPUS_START, MEMORY_SPOTS, DORMITORIES, QUEST_ROUTES, campusObstacles, featureCenter, pointInPolygon } from '../campus-layout.js';
 import { MAP_META } from '../campus-data.js';
 import { collides, moveWithCollision } from '../logic.js';
 const obstacles=campusObstacles();
@@ -22,8 +22,13 @@ test('both lakes stop swept player movement at their actual shorelines',()=>{
     assert.ok(Math.hypot(result.x-c.x,result.z-c.z)>3);
   }
 });
-test('spawn, guide and all collectibles are outside solid geometry',()=>{
-  for(const p of [CAMPUS_START,GUIDE,...MEMORY_SPOTS])assert.equal(collides(p.x,p.z,obstacles),false,JSON.stringify(p));
+test('spawn, guide, collectibles, and all 6 dormitory entrances are outside solid geometry',()=>{
+  for(const p of [CAMPUS_START,GUIDE,...MEMORY_SPOTS,...DORMITORIES])assert.equal(collides(p.x,p.z,obstacles),false,JSON.stringify(p));
+  assert.equal(DORMITORIES.length,6);
+  for(const dorm of DORMITORIES){
+    const building=CAMPUS_FEATURES.find(f=>f.name===dorm.name);
+    assert.ok(building,`missing campus building for ${dorm.name}`);
+  }
 });
 test('all quest and living-area routes are walkable with the real polygon colliders',()=>{
   for(const [name,route] of Object.entries(QUEST_ROUTES)){

@@ -1,5 +1,5 @@
 import { CAMPUS_FEATURES, ROADS, MAP_BOUNDS, GUIDE, featureCenter } from './campus-layout.js';
-export function drawCampusMap(ctx,width,height,{player,yaw=0,memories=[],progress,expanded=false}={}){
+export function drawCampusMap(ctx,width,height,{player,yaw=0,memories=[],progress,dorm=null,expanded=false}={}){
   const pad=expanded?35:10,s=Math.min((width-pad*2)/(MAP_BOUNDS.maxX-MAP_BOUNDS.minX),(height-pad*2)/(MAP_BOUNDS.maxZ-MAP_BOUNDS.minZ));
   const ox=(width-(MAP_BOUNDS.maxX-MAP_BOUNDS.minX)*s)/2,oy=(height-(MAP_BOUNDS.maxZ-MAP_BOUNDS.minZ)*s)/2;
   const X=x=>ox+(x-MAP_BOUNDS.minX)*s,Y=z=>oy+(z-MAP_BOUNDS.minZ)*s;
@@ -15,5 +15,6 @@ export function drawCampusMap(ctx,width,height,{player,yaw=0,memories=[],progres
   if(expanded){ctx.fillStyle='#d9d5be';ctx.font='12px "Microsoft YaHei"';ctx.fillText('学府大街',X(151),Y(87));ctx.fillText('松工路',X(55),Y(-163));ctx.fillText('南门',X(3),Y(222));ctx.fillStyle='#afbdab';ctx.fillText('校外区域',X(-165),Y(159));ctx.fillText('北 N ↑',width-49,24);ctx.textAlign='left';ctx.fillText('官方地物轮廓 · 道路参考卫星图',18,height-14);}
   for(const m of memories){if(!progress?.started||progress.collected.includes(m.id))continue;const x=X(m.x),y=Y(m.z);ctx.fillStyle=m.color;ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-5,y);ctx.closePath();ctx.fill();}
   if(!progress?.completed){ctx.fillStyle='#f4d985';ctx.beginPath();ctx.arc(X(GUIDE.x),Y(GUIDE.z),expanded?5:3,0,Math.PI*2);ctx.fill();}
+  if(dorm&&Number.isFinite(dorm.x)&&Number.isFinite(dorm.z)){const dx=X(dorm.x),dy=Y(dorm.z),r=expanded?6:4;ctx.fillStyle='#ff9f5a';ctx.strokeStyle='#fff6d9';ctx.lineWidth=1.8;ctx.beginPath();ctx.arc(dx,dy,r,0,Math.PI*2);ctx.fill();ctx.stroke();if(expanded){ctx.textAlign='center';ctx.font='bold 11px "Microsoft YaHei"';ctx.fillStyle='#ffe29a';ctx.fillText('★ 我的宿舍',dx,dy-12);}}
   if(player){ctx.save();ctx.translate(X(player.x),Y(player.z));ctx.rotate(-yaw);ctx.fillStyle='#fffdf1';ctx.strokeStyle='#264735';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(5,5);ctx.lineTo(0,2);ctx.lineTo(-5,5);ctx.closePath();ctx.stroke();ctx.fill();ctx.restore();}
 }

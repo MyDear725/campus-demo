@@ -9,6 +9,14 @@ export const MEMORY_SPOTS=[
   {id:'encounter',area:'涌泉湖畔',x:-33,z:64},
   {id:'passion',area:'西北田径场',x:-132,z:-51},
 ];
+export const DORMITORIES=[
+  {id:'dorm-1',buildingId:77931,name:'学生宿舍1舍',shortName:'1舍',x:272,z:-110,area:'学生生活区 · 北苑'},
+  {id:'dorm-2',buildingId:77933,name:'学生宿舍2舍',shortName:'2舍',x:242,z:-110,area:'学生生活区 · 北苑'},
+  {id:'dorm-3',buildingId:77935,name:'学生宿舍3舍',shortName:'3舍',x:233,z:-99,area:'学生生活区 · 中苑'},
+  {id:'dorm-4',buildingId:77937,name:'学生宿舍4舍',shortName:'4舍',x:218,z:-63,area:'学生生活区 · 南苑'},
+  {id:'dorm-5',buildingId:77938,name:'学生宿舍5舍',shortName:'5舍',x:248,z:-63,area:'学生生活区 · 南苑'},
+  {id:'dorm-6',buildingId:77941,name:'第六学生宿舍',shortName:'6舍',x:185,z:33,area:'学生生活区 · 西苑'},
+];
 // Clear pedestrian routes also used for collision regression checks.
 export const QUEST_ROUTES={
   toGuide:[[3,194],[0,174],[-23,161],[-22,128],[-9,113],[20,109]],

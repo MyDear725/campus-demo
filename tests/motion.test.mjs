@@ -37,10 +37,12 @@ test('resolveKeyCode normalizes standard codes, key strings, and IME/keyCode fal
   assert.equal(resolveKeyCode({ code: 'KeyW' }), 'KeyW');
   assert.equal(resolveKeyCode({ code: 'Unidentified', key: 'w' }), 'KeyW');
   assert.equal(resolveKeyCode({ code: '', key: 'E' }), 'KeyE');
+  assert.equal(resolveKeyCode({ code: '', key: 'h' }), 'KeyH');
   assert.equal(resolveKeyCode({ key: ' ' }), 'Space');
   assert.equal(resolveKeyCode({ key: 'Escape' }), 'Escape');
   assert.equal(resolveKeyCode({ key: 'Enter' }), 'Enter');
   assert.equal(resolveKeyCode({ code: 'Unidentified', keyCode: 65 }), 'KeyA');
+  assert.equal(resolveKeyCode({ code: 'Unidentified', keyCode: 72 }), 'KeyH');
   assert.equal(resolveKeyCode({ which: 68 }), 'KeyD');
   assert.equal(resolveKeyCode({ keyCode: 32 }), 'Space');
   assert.equal(resolveKeyCode({ keyCode: 16 }), 'ShiftLeft');
@@ -48,7 +50,7 @@ test('resolveKeyCode normalizes standard codes, key strings, and IME/keyCode fal
 });
 test('macOS native app launcher bridges all movement and interaction keys without swallowing them in mouse monitor', () => {
   const src = fs.readFileSync(new URL('../启动校园Demo.app/Contents/Resources/CampusApp.m', import.meta.url), 'utf8');
-  for (const expectedCode of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyM', 'KeyR', 'Space', 'Enter', 'Escape', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+  for (const expectedCode of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyH', 'KeyM', 'KeyR', 'Space', 'Enter', 'Escape', 'ShiftLeft', 'ShiftRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
     assert.ok(src.includes(`@"${expectedCode}"`), `missing hardware mapping for ${expectedCode}`);
   }
   assert.ok(src.includes('window.__onNativeKey'), 'missing native key bridge function');

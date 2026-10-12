@@ -21,7 +21,7 @@ export function movementAction({ grounded, velocityY, speed, sprint, exhausted, 
 
 const KEY_FALLBACKS = {
   w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD',
-  e: 'KeyE', m: 'KeyM', r: 'KeyR',
+  e: 'KeyE', h: 'KeyH', m: 'KeyM', r: 'KeyR',
   ' ': 'Space', spacebar: 'Space',
   enter: 'Enter', escape: 'Escape', esc: 'Escape',
   shift: 'ShiftLeft',
@@ -31,7 +31,7 @@ const KEY_FALLBACKS = {
 
 const KEYCODE_FALLBACKS = {
   87: 'KeyW', 65: 'KeyA', 83: 'KeyS', 68: 'KeyD',
-  69: 'KeyE', 77: 'KeyM', 82: 'KeyR',
+  69: 'KeyE', 72: 'KeyH', 77: 'KeyM', 82: 'KeyR',
   32: 'Space', 13: 'Enter', 27: 'Escape', 16: 'ShiftLeft',
   38: 'ArrowUp', 40: 'ArrowDown', 37: 'ArrowLeft', 39: 'ArrowRight',
 };

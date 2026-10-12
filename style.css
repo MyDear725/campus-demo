@@ -7,3 +7,5 @@
 .map-panel.expanded{position:fixed;top:50%;right:50%;transform:translate(50%,-50%);width:min(88vw,78vh);z-index:9;box-shadow:0 15px 100px #102e33cc}.map-panel.expanded>div{font-size:12px}.map-panel.expanded canvas{width:100%;height:auto}
 
 #capture-hint{position:absolute;left:50%;bottom:130px;transform:translateX(-50%);display:flex;align-items:center;gap:18px;width:max-content;max-width:85vw;padding:14px 20px;background:#193e3ded;border:1px solid #ead19c88;color:#fff2d5;font-size:12px;line-height:1.8;pointer-events:auto}#capture-retry{flex-shrink:0;padding:8px 12px;border:1px solid #ead19c;background:#ead9b5;color:#25453e}
+.dorm-badge{color:var(--gold);padding:3px 9px;border:1px solid #ead19c55;background:#1a3e3ca8;border-radius:3px}
+.dorm-modal{max-width:560px}.time-select-group{display:inline-flex;align-items:center;gap:6px}.sleep-preview{margin-top:18px;padding:12px 15px;background:#173632aa;border-left:2px solid var(--gold);color:#f3e6c4;font-size:12px;line-height:1.8}

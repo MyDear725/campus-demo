@@ -40,5 +40,8 @@ export function createAtmosphere(scene,renderer){
   const generator=new THREE.PMREMGenerator(renderer);
   const target=generator.fromScene(environment,.04,.1,10000);
   scene.environment=target.texture;scene.environmentIntensity=.45;generator.dispose();
-  return {sky,update(time){uniforms.cloudTime.value=time;}};
+  return {sky,update(time,sunOffset){
+    uniforms.cloudTime.value=time;
+    if(sunOffset)uniforms.sunPosition.value.set(sunOffset.x,sunOffset.y,sunOffset.z);
+  }};
 }
