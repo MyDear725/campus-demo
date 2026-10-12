@@ -8,6 +8,10 @@
 		<data>
 		ifQORz5frwfNL2XqwqJU6Y0cPLc=
 		</data>
+		<key>Resources/CampusApp.m</key>
+		<data>
+		4Exw9mqQwgocsjKzaX8rg5knL9U=
+		</data>
 		<key>Resources/server.py</key>
 		<data>
 		rEcn99uHgEd6EN+P9zoDNo7m4q0=
@@ -20,6 +24,13 @@
 			<key>hash2</key>
 			<data>
 			KUf0+HoDk9nO1GVJme/biWvT/ULmsKmucWBXFIblSeA=
+			</data>
+		</dict>
+		<key>Resources/CampusApp.m</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			tM/6FwYQeDwMY9GKtlKTEkX/rMd/nFWxVbBlM4Hbof4=
 			</data>
 		</dict>
 		<key>Resources/server.py</key>

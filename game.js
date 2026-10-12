@@ -5,7 +5,7 @@ import { GUIDE, BOARD, MEMORY_SPOTS, QUEST_ROUTES, campusArea } from './campus-l
 import { drawCampusMap } from './campus-map.js';
 import { START, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest } from './logic.js';
 import { upgradeAvatar } from './avatar.js';
-import { updateEnergy, movementAction, WALK_SPEED, RUN_SPEED } from './motion.js';
+import { updateEnergy, movementAction, resolveKeyCode, WALK_SPEED, RUN_SPEED } from './motion.js';
 import { createMouseLook, rotateLook, smoothLook, orbitOffset, followDistance } from './camera-controls.js';
 
 const $ = id => document.getElementById(id);
@@ -186,17 +186,20 @@ $('start-button').onclick=()=>{play();toast('鼠标转动视角 · WASD 移动 �
 $('restart').onclick=()=>{progress=freshProgress();save();hero.g.position.set(START.x,.1,START.z);velocityY=0;grounded=true;stamina=100;exhausted=false;landing=0;resetLook();play();toast('新的旅程开始了');};
 $('quality').onchange=e=>{const high=e.target.value==='high';campus.landscape.setQuality(high);renderer.shadowMap.enabled=high;renderer.setPixelRatio(high?Math.min(devicePixelRatio,1.6):1);scene.traverse(o=>{if(o.material)o.material.needsUpdate=true;});};
 window.addEventListener('keydown',e=>{
-  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+  const code=resolveKeyCode(e);if(!code)return;
+  if(!e.metaKey&&!e.ctrlKey&&['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','KeyE','KeyM','KeyR','Escape'].includes(code))e.preventDefault?.();
   // Escape and pointerlockchange may arrive in either order. Never resume on Escape.
-  if(e.code==='Escape'){if(mode==='play')pause();return;}
-  if(mode==='dialogue'){if(!e.repeat&&['KeyE','Enter','Space'].includes(e.code))nextDialogue();return;}
-  if(mode!=='play')return;keys.add(e.code);
-  if(!e.repeat&&e.code==='KeyE')interact();
-  if(!e.repeat&&e.code==='Space'&&grounded){velocityY=7.2;grounded=false;}
-  if(!e.repeat&&e.code==='KeyM')document.querySelector('.map-panel').classList.toggle('expanded');
-  if(!e.repeat&&e.code==='KeyR'){hero.g.position.set(START.x,.1,START.z);velocityY=0;grounded=true;landing=0;toast('已返回校园入口');}
+  if(code==='Escape'){if(mode==='play')pause();return;}
+  if(mode==='dialogue'){if(!e.repeat&&['KeyE','Enter','Space'].includes(code))nextDialogue();return;}
+  if(mode==='start'){if(!e.repeat&&['Enter','Space'].includes(code))$('start-button').click();return;}
+  if(mode==='complete'){if(!e.repeat&&['Enter','Space'].includes(code))$('keep-exploring').click();return;}
+  if(mode!=='play')return;keys.add(code);
+  if(!e.repeat&&code==='KeyE')interact();
+  if(!e.repeat&&code==='Space'&&grounded){velocityY=7.2;grounded=false;}
+  if(!e.repeat&&code==='KeyM')document.querySelector('.map-panel').classList.toggle('expanded');
+  if(!e.repeat&&code==='KeyR'){hero.g.position.set(START.x,.1,START.z);velocityY=0;grounded=true;landing=0;toast('已返回校园入口');}
 });
-window.addEventListener('keyup',e=>keys.delete(e.code));
+window.addEventListener('keyup',e=>{const code=resolveKeyCode(e);if(code)keys.delete(code);});
 window.addEventListener('blur',()=>{keys.clear();if(mode==='play')pause();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&mode==='play')pause();});
 canvas.addEventListener('wheel',e=>{if(mode==='play'){e.preventDefault();camDistance=THREE.MathUtils.clamp(camDistance+e.deltaY*.007,3,13);}},{passive:false});
