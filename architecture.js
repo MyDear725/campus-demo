@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { pointInPolygon, segmentDistance } from './campus-layout.js';
+import { TEACHING_ENTRIES } from './teaching-layout.js';
 
 // Footprints are official map data; facade proportions are modeled from the
 // campus photographs listed in art/map-reference/exteriors/sources.json.
@@ -86,7 +87,10 @@ export function buildArchitecture(world,features,{cube,occluders}){
       return {a,b,dx,dz,length,ux,uz,nx,nz,angle:-Math.atan2(dz,dx),i};
     }).filter(e=>e.length>.3);
     // A substantial outward-facing south/west edge for the main entrance.
-    const entry=edges.filter(e=>e.length>8).sort((a,b)=>(b.nz*.75-b.nx*.25)*15+b.length*.15-((a.nz*.75-a.nx*.25)*15+a.length*.15))[0];
+    const teachingEntry=TEACHING_ENTRIES[f.id];
+    const entry=teachingEntry
+      ?edges.filter(e=>e.length>6).sort((a,b)=>segmentDistance(...teachingEntry.anchor,a.a,a.b)-segmentDistance(...teachingEntry.anchor,b.a,b.b))[0]
+      :edges.filter(e=>e.length>8).sort((a,b)=>(b.nz*.75-b.nx*.25)*15+b.length*.15-((a.nz*.75-a.nx*.25)*15+a.length*.15))[0];
     for(const e of edges){
       const {a,dx,dz,length,angle,nx,nz,i}=e;
       const midZ=(a[1]+e.b[1])/2,eh=library&&midZ>107?10:h;
@@ -160,7 +164,7 @@ export function buildArchitecture(world,features,{cube,occluders}){
             windowCount++;
           }
         }
-        if(p.type==='teaching-b')for(let k=0;k<bays;k++)part((k+.5)/bays,eh*.5,.25,eh,1.25,'stone',.5);
+        if(p.type==='teaching-b'&&e!==entry)for(let k=0;k<bays;k++)part((k+.5)/bays,eh*.5,.25,eh,1.25,'stone',.5);
         if(dorm)for(const t of [.03,.97])part(t,eh/2,.1,eh,.1,'metal',.23,false);
       }
       // A recessed, glazed double-door lobby with handles and supported canopy.
@@ -178,6 +182,27 @@ export function buildArchitecture(world,features,{cube,occluders}){
         part(.5,3.57,ew+1.8,.09,2.6,'silver',1,false);
         // Shallow pavement threshold only: preserve the demo's level walking routes.
         part(.5,.12,ew+2,.18,2.8,'sill',1.1,false);
+        if(teachingEntry){
+          const accent=teachingEntry.accent;
+          // Portal piers hug the facade; the central approach remains level.
+          for(const side of [-1,1]){
+            part(.5+side*(ew/2+.35)/length,2.1,.48,4.2,.6,accent,.45);
+            part(.5+side*(ew/2+.38)/length,2.25,.085,1.4,.06,'#fff0c7',.78,false);
+          }
+          part(.5,4.25,ew+1.3,.38,.7,accent,.48);
+          part(.5,3.56,ew+2,.12,3.8,accent,1.65);
+          part(.5,3.44,ew+1.5,.05,3.4,'dark',1.65,false);
+          if(teachingEntry.letter==='B')for(let d=-ew/2;d<=ew/2;d+=.38)part(.5+d/length,3.67,.12,.18,3.8,accent,1.65);
+          if(teachingEntry.letter==='C')for(const side of [-1,1])part(.5+side*(ew/2+.25)/length,4,.12,.12,3.7,'silver',1.6);
+          // Small physical A/B/C plaques on the entry, no floating rooftop labels.
+          const plaqueT=.5+(ew/2+.9)/length;
+          part(plaqueT,2.6,1.1,1.35,.12,'dark',.3,false);
+          const letters={A:[[-.3,-.4,0,.4],[0,.4,.3,-.4],[-.18,-.04,.18,-.04]],B:[[-.28,-.4,-.28,.4],[-.28,.4,.2,.4],[.2,.4,.3,.23],[.3,.23,.2,0],[-.28,0,.2,0],[.2,0,.3,-.2],[.3,-.2,.2,-.4],[-.28,-.4,.2,-.4]],C:[[.27,.36,-.2,.4],[-.2,.4,-.3,.22],[-.3,.22,-.3,-.22],[-.3,-.22,-.2,-.4],[-.2,-.4,.27,-.36]]};
+          for(const [ax,ay,bx,by] of letters[teachingEntry.letter]){
+            const at=(x,y)=>new THREE.Vector3(a[0]+dx*plaqueT+nz*x+nx*.39,2.6+y,a[1]+dz*plaqueT-nx*x+nz*.39);
+            beam(at(ax,ay),at(bx,by),.065,'#f3e8cd');
+          }
+        }
       }
     }
     // Rooftop details sit within the original footprint, never in courtyards.
@@ -233,7 +258,7 @@ export function buildArchitecture(world,features,{cube,occluders}){
       const roof=add(geo,'silver');roof.material=mat('silver').clone();roof.material.side=THREE.DoubleSide;occluders.push(roof);
       for(let x=x0+2;x<x1;x+=4){const y=roofY((x-x0)/(x1-x0));box(x,(h+y)/2,z1-.25,.14,y-h,.14,'silver');}
     }
-    buildings.push({id:f.id,name:f.name,type:p.type,height:h,bounds,windows:windowCount,roof:p.roof,entrance:entry?{x:(entry.a[0]+entry.b[0])/2,z:(entry.a[1]+entry.b[1])/2}:null});
+    buildings.push({id:f.id,name:f.name,type:p.type,height:h,bounds,windows:windowCount,roof:p.roof,entrance:entry?{nx:entry.nx,nz:entry.nz,x:(entry.a[0]+entry.b[0])/2,z:(entry.a[1]+entry.b[1])/2}:null});
   }
   return buildings;
 }

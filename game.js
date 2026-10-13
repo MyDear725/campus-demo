@@ -5,7 +5,7 @@ import { GUIDE, BOARD, MEMORY_SPOTS, QUEST_ROUTES, campusArea } from './campus-l
 import { drawCampusMap } from './campus-map.js';
 import { START, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest } from './logic.js';
 import { upgradeAvatar } from './avatar.js';
-import { updateEnergy, movementAction, WALK_SPEED, RUN_SPEED } from './motion.js';
+import { movementAction, WALK_SPEED, RUN_SPEED } from './motion.js';
 import { createMouseLook, rotateLook, smoothLook, orbitOffset, followDistance } from './camera-controls.js';
 
 const $ = id => document.getElementById(id);
@@ -119,9 +119,9 @@ try{progress=sanitizeProgress(JSON.parse(localStorage.getItem('campus-echo-v1'))
 let storageAvailable=true,qaRunning=false;
 function save(){if(qaRunning)return;try{localStorage.setItem('campus-echo-v1',JSON.stringify(progress));}catch{if(storageAvailable)toast('浏览器未开放本地存储，本次进度仅在当前页面保留。');storageAvailable=false;}}
 if(progress.started){$('start-button').innerHTML='继续旅程 <span>→</span>';$('saved-hint').textContent=`已保存 ${progress.collected.length} / 3 枚记忆 · 点击启程捕获鼠标`;}
-let mode='start',yaw=0,pitch=.35,camDistance=5.5,velocityY=0,grounded=true,stamina=100,elapsed=0,stepPhase=0,toastTimer=0;
+let mode='start',yaw=0,pitch=.35,camDistance=5.5,velocityY=0,grounded=true,elapsed=0,stepPhase=0,toastTimer=0;
 let targetYaw=yaw,targetPitch=pitch;
-let exhausted=false,landing=0,playerAction='Idle',actualSpeed=0;
+let landing=0,playerAction='Idle',actualSpeed=0;
 function turnView(dx,dy){({yaw:targetYaw,pitch:targetPitch}=rotateLook(targetYaw,targetPitch,dx,dy));}
 function resetLook(heading=0,elevation=.35){yaw=targetYaw=heading;pitch=targetPitch=elevation;hero.g.rotation.y=yaw;}
 function updateLook(dt){
@@ -183,7 +183,7 @@ function updateInteraction(){
   $('area').textContent=campusArea(p.x,p.z);
 }
 $('start-button').onclick=()=>{play();toast('鼠标转动视角 · WASD 移动 · Esc 暂停');};$('pause').onclick=pause;$('resume').onclick=play;$('keep-exploring').onclick=play;$('dialogue-next').onclick=nextDialogue;
-$('restart').onclick=()=>{progress=freshProgress();save();hero.g.position.set(START.x,.1,START.z);velocityY=0;grounded=true;stamina=100;exhausted=false;landing=0;resetLook();play();toast('新的旅程开始了');};
+$('restart').onclick=()=>{progress=freshProgress();save();hero.g.position.set(START.x,.1,START.z);velocityY=0;grounded=true;landing=0;resetLook();play();toast('新的旅程开始了');};
 $('quality').onchange=e=>{const high=e.target.value==='high';campus.landscape.setQuality(high);renderer.shadowMap.enabled=high;renderer.setPixelRatio(high?Math.min(devicePixelRatio,1.6):1);scene.traverse(o=>{if(o.material)o.material.needsUpdate=true;});};
 window.addEventListener('keydown',e=>{
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
@@ -231,18 +231,16 @@ function stepPlayer(dt){
     let forward=(keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0);
     let right=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0);
     const moving=forward!==0||right!==0;
-    const energy=updateEnergy(stamina,exhausted,moving&&(keys.has('ShiftLeft')||keys.has('ShiftRight')),dt);
-    const sprint=energy.sprint;stamina=energy.value;exhausted=energy.exhausted;
-    $('stamina-bar').style.width=stamina+'%';$('stamina-bar').classList.toggle('exhausted',exhausted);
-    $('movement-status').textContent=exhausted?'体力恢复中 · 暂时步行':sprint?'奔跑中':'自由探索中';
+    const sprint=moving&&(keys.has('ShiftLeft')||keys.has('ShiftRight'));
+    $('movement-status').textContent=sprint?'奔跑中':'自由探索中';
     actualSpeed=0;landing=Math.max(0,landing-dt);
     if(moving){const n=Math.hypot(forward,right);forward/=n;right/=n;const speed=sprint?RUN_SPEED:WALK_SPEED;const dx=(right*Math.cos(yaw)-forward*Math.sin(yaw))*speed*dt;const dz=(-forward*Math.cos(yaw)-right*Math.sin(yaw))*speed*dt;
       const p=moveWithCollision(hero.g.position,dx,dz,obstacles);actualSpeed=Math.hypot(p.x-hero.g.position.x,p.z-hero.g.position.z)/Math.max(dt,.0001);hero.g.position.x=p.x;hero.g.position.z=p.z;
       stepPhase+=dt*(sprint?14:9);hero.legs[0].rotation.x=Math.sin(stepPhase)*.65;hero.legs[1].rotation.x=-Math.sin(stepPhase)*.65;hero.arms[0].rotation.x=-Math.sin(stepPhase)*.5;hero.arms[1].rotation.x=Math.sin(stepPhase)*.5;hero.tail.rotation.x=-.25-(sprint?.3:0)+Math.sin(stepPhase)*.1;
     }else for(const limb of [...hero.legs,...hero.arms])limb.rotation.x*=Math.exp(-dt*12);
     if(!grounded){velocityY-=19*dt;hero.g.position.y+=velocityY*dt;if(hero.g.position.y<=.1){hero.g.position.y=.1;velocityY=0;grounded=true;landing=.24;}hero.arms[0].rotation.x=-.5;hero.arms[1].rotation.x=-.5;}
-    playerAction=movementAction({grounded,velocityY,speed:actualSpeed,sprint,exhausted,landing});
-    hero.updateModel?.(dt,playerAction,{speed:actualSpeed,exhausted,backward:forward<0});
+    playerAction=movementAction({grounded,velocityY,speed:actualSpeed,sprint,landing});
+    hero.updateModel?.(dt,playerAction,{speed:actualSpeed,backward:forward<0});
     updateInteraction();
   }
 }
@@ -253,7 +251,7 @@ function tick(){
   if(['play','start','dialogue','complete'].includes(mode)){
     const guideTalking=mode==='dialogue'&&$('speaker').textContent.startsWith('小岚');
     guide.updateModel?.(dt,guideTalking?'Talk':'Idle',{smile:true,talking:guideTalking});student.updateModel?.(dt);
-    if(mode!=='play')hero.updateModel?.(dt,exhausted?'Tired':'Idle',{exhausted,smile:mode==='dialogue'||mode==='complete'});
+    if(mode!=='play')hero.updateModel?.(dt,'Idle',{smile:mode==='dialogue'||mode==='complete'});
   }
   if(mode==='start'){
     camera.position.set(285+Math.sin(elapsed*.055)*12,330,440);camera.lookAt(0,0,20);
@@ -262,18 +260,18 @@ function tick(){
   }
   for(const m of memories){m.mesh.rotation.y=elapsed*.8;m.mesh.position.y=1.7+Math.sin(elapsed*1.7+m.x)*.18;m.ring.scale.setScalar(1+Math.sin(elapsed*2)*.07);}
   guideMarker.position.y=2.8+Math.sin(elapsed*2)*.12;guideMarker.rotation.y=elapsed;
-  campus.landscape.update(elapsed);atmosphere.update(elapsed);
+  campus.landscape.update(elapsed,camera);atmosphere.update(elapsed);
   const shadowExtent=mode==='start'?340:95;
   if(sun.shadow.camera.right!==shadowExtent){Object.assign(sun.shadow.camera,{left:-shadowExtent,right:shadowExtent,top:shadowExtent,bottom:-shadowExtent});sun.shadow.camera.updateProjectionMatrix();}
   const shadowX=mode==='start'?0:hero.g.position.x,shadowZ=mode==='start'?0:hero.g.position.z;
   sun.position.set(shadowX-150,350,shadowZ+180);sun.target.position.set(shadowX,0,shadowZ);
   if(toastTimer>0&&performance.now()>toastTimer){toastTimer=0;$('toast').classList.remove('visible');}
-  if(elapsed-lastMapTime>.1){drawMap();lastMapTime=elapsed;const degrees=((yaw*180/Math.PI)%360+360)%360;$('compass-heading').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(degrees/45)%8];canvas.dataset.diagnostics=JSON.stringify({mode,x:+hero.g.position.x.toFixed(2),y:+hero.g.position.y.toFixed(2),z:+hero.g.position.z.toFixed(2),yaw:+yaw.toFixed(4),facing:+hero.g.rotation.y.toFixed(4),targetYaw:+targetYaw.toFixed(4),pitch:+pitch.toFixed(2),mouseLook:canvas.dataset.mouseLook||'unlocked',cameraDistance:+cameraDistance.toFixed(2),grounded,stamina:Math.round(stamina),exhausted,action:hero.animationState?.().action,animationPhase:hero.animationState?.().phase,frames:frameCount,environment:campus.landscape.stats,quality:campus.landscape.quality,buildings:campus.buildings.length,drawCalls:renderer.info.render.calls,progress});}
+  if(elapsed-lastMapTime>.1){drawMap();lastMapTime=elapsed;const degrees=((yaw*180/Math.PI)%360+360)%360;$('compass-heading').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(degrees/45)%8];canvas.dataset.diagnostics=JSON.stringify({mode,x:+hero.g.position.x.toFixed(2),y:+hero.g.position.y.toFixed(2),z:+hero.g.position.z.toFixed(2),yaw:+yaw.toFixed(4),facing:+hero.g.rotation.y.toFixed(4),targetYaw:+targetYaw.toFixed(4),pitch:+pitch.toFixed(2),mouseLook:canvas.dataset.mouseLook||'unlocked',cameraDistance:+cameraDistance.toFixed(2),grounded,action:hero.animationState?.().action,animationPhase:hero.animationState?.().phase,frames:frameCount,environment:campus.landscape.stats,quality:campus.landscape.quality,buildings:campus.buildings.length,drawCalls:renderer.info.render.calls,progress});}
   renderer.render(scene,camera);
 }
 updateQuest();drawMap();tick();
 // Read-only diagnostics for smoke checks and performance inspection.
-Object.defineProperty(window,'campusDemo',{value:Object.freeze({getState:()=>({mode,position:{x:hero.g.position.x,y:hero.g.position.y,z:hero.g.position.z},grounded,stamina,progress:JSON.parse(JSON.stringify(progress)),interactable:closest?.name||null,renderCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,frames:frameCount,webgl:!!renderer.getContext()})})});
+Object.defineProperty(window,'campusDemo',{value:Object.freeze({getState:()=>({mode,position:{x:hero.g.position.x,y:hero.g.position.y,z:hero.g.position.z},grounded,progress:JSON.parse(JSON.stringify(progress)),interactable:closest?.name||null,renderCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,frames:frameCount,webgl:!!renderer.getContext()})})});
 
 // Explicit developer-only integration runner. Uses the same simulation, collision,
 // interaction and dialogue functions; never overwrites a player's saved progress.
@@ -302,7 +300,7 @@ if(new URLSearchParams(location.search).has('qa')){
     };
     const finishDialogue=()=>{let i=0;while(mode==='dialogue'&&i++<8)nextDialogue();check(i<8,'对话能够结束');};
     try{
-      progress=freshProgress();hero.g.position.set(START.x,.1,START.z);grounded=true;velocityY=0;stamina=100;exhausted=false;landing=0;mode='play';$('start-screen').classList.add('hidden');$('hud').classList.remove('hidden');
+      progress=freshProgress();hero.g.position.set(START.x,.1,START.z);grounded=true;velocityY=0;landing=0;mode='play';$('start-screen').classList.add('hidden');$('hud').classList.remove('hidden');
       resetLook();cameraDistance=camDistance=5.5;
       let orbitValid=true,behindValid=true;
       for(let i=0;i<1200;i++){
@@ -327,17 +325,16 @@ if(new URLSearchParams(location.search).has('qa')){
       check(yaw===pausedYaw&&targetYaw===yaw,'暂停会清除未完成的转向，恢复时不突然转头');
       resetLook();
       raycaster.set(new THREE.Vector3(30,4,174),new THREE.Vector3(0,0,-1));raycaster.far=50;check(raycaster.intersectObjects(occluders,false).length>0,'信息楼实际轮廓能遮挡第三人称镜头');
-      keys.add('KeyW');keys.add('ShiftLeft');stepPlayer(.1);keys.clear();check(stamina<100&&hero.g.position.z<START.z-.8,'奔跑加速并消耗体力');hero.g.position.set(START.x,.1,START.z);
-      stamina=100;exhausted=false;hero.g.position.set(-270,.1,140);keys.add('KeyW');keys.add('ShiftLeft');
-      for(let i=0;i<287;i++)stepPlayer(1/60);
-      check(exhausted&&playerAction==='Walk','体力耗尽后按住 Shift 自动切换步行');
-      const phases=[];let continuous=true;
-      for(let i=0;i<80;i++){stepPlayer(1/60);continuous&&=playerAction==='Walk';phases.push(hero.animationState().phase);}
-      check(continuous&&Math.max(...phases)-Math.min(...phases)>.5,'恢复期间保持连续走路动画，没有反复重置');
-      keys.clear();stepPlayer(1/60);check(playerAction==='Tired','体力耗尽后停下播放疲劳喘息');
-      keys.add('KeyW');keys.add('ShiftLeft');for(let i=0;i<40;i++)stepPlayer(1/60);
-      check(!exhausted&&playerAction==='Run','体力恢复到门槛后重新允许奔跑');
-      keys.clear();stamina=100;exhausted=false;hero.g.position.set(START.x,.1,START.z);
+      keys.add('KeyW');keys.add('ShiftLeft');stepPlayer(.1);keys.clear();check(hero.g.position.z<START.z-.8,'Shift 奔跑加速');
+      hero.g.position.set(-270,.1,140);keys.add('KeyW');keys.add('ShiftLeft');
+      let continuous=true;const phases=[];
+      for(let i=0;i<1200;i++){stepPlayer(1/60);continuous&&=playerAction==='Run';if(i>1100)phases.push(hero.animationState().phase);}
+      check(continuous,'持续奔跑 20 秒不再受体力限制');
+      check(Math.max(...phases)-Math.min(...phases)>.5,'持续奔跑动画保持播放');
+      keys.delete('ShiftLeft');stepPlayer(1/60);check(playerAction==='Walk','松开 Shift 恢复步行动画');
+      keys.clear();stepPlayer(1/60);check(playerAction==='Idle','停下正常待机，无体力疲劳状态');
+      check(!$('stamina-bar'),'界面已移除体力条');
+      hero.g.position.set(START.x,.1,START.z);
       velocityY=7.2;grounded=false;stepPlayer(1/60);check(hero.g.position.y>.1,'跳跃离地');for(let i=0;i<120;i++)stepPlayer(1/60);check(grounded&&hero.g.position.y===.1,'跳跃后正确落地');
       const follow=route=>route.forEach(([x,z])=>walk(x,z));
       follow(QUEST_ROUTES.toGuide);check(closest?.type==='guide','书韵广场向导可达');interact();finishDialogue();check(progress.started,'领取任务');

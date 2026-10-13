@@ -3,6 +3,11 @@ import { Water } from './node_modules/three/examples/jsm/objects/Water.js';
 import { mergeGeometries } from './node_modules/three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createNatureMaterials, waterNormals, seededRandom } from './nature-materials.js';
 import { createForest } from './foliage.js';
+import { buildGardens } from './campus-gardens.js';
+import { buildRoadDesign } from './road-design.js';
+import { nearBoundary } from './campus-boundary.js';
+import { TEACHING_COURT } from './teaching-layout.js';
+import { buildTeachingCourt } from './teaching-court.js';
 import { CAMPUS_FEATURES, ROADS, QUEST_ROUTES, featureCenter, nearPolygon, segmentDistance } from './campus-layout.js';
 
 export function stripGeometry(points,width,y=.1,offset=0){
@@ -43,21 +48,8 @@ export function buildLandscape(scene,world,obstacles,occluders){
   const cube=new THREE.BoxGeometry(1,1,1);
   function box(x,y,z,w,h,d,material,angle=0,cast=true){const geo=cube.clone();geo.scale(w,h,d);geo.rotateY(angle);geo.translate(x,y,z);collect(geo,material,cast);}
   const ground=new THREE.PlaneGeometry(2400,2200,1,1);ground.rotateX(-Math.PI/2);ground.translate(0,-.09,0);worldUv(ground,5);collect(ground,materials.grass);
-  // Continuous mitered paths replace overlapping pale rectangles and round joints.
-  for(const road of ROADS){
-    const vehicle=road.width>=6,surface=vehicle?materials.asphalt:materials.paving;
-    strip(road.points,road.width+1.8,materials.paving,.035);
-    strip(road.points,road.width,surface,.075);
-    for(const side of [-1,1])strip(road.points,.22,materials.stone,.17,side*(road.width/2+.16));
-    if(vehicle){
-      for(const side of [-1,1])strip(road.points,.085,materials.paint,.085,side*(road.width/2-.35));
-      for(let i=1;i<road.points.length;i++){
-        const a=road.points[i-1],b=road.points[i],length=Math.hypot(b[0]-a[0],b[1]-a[1]);
-        for(let d=2;d<length-3;d+=7){const t=d/length,u=(d+2.7)/length;strip([[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u]],.12,materials.paint,.086);}
-      }
-    }
-  }
-  for(const z of [174,199])for(let x=-.2;x<6;x+=.95)box(x,.085,z,.46,.012,3,materials.paint,0,false);
+  const roadDesign=buildRoadDesign({strip,box,materials,obstacles});
+  const teachingCourt=buildTeachingCourt(world,{collect,strip,box,materials,obstacles});
 
   const waterGeos=[],banks=[];
   for(const f of CAMPUS_FEATURES){
@@ -85,7 +77,7 @@ export function buildLandscape(scene,world,obstacles,occluders){
       for(let r=1;r<rings;r++)for(let j=0;j<count;j++){const a=1+(r-1)*count+j,b=1+(r-1)*count+(j+1)%count,d=a+count,e=b+count;idx.push(a,d,b,b,d,e);}
       const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setIndex(idx);geo.computeVertexNormals();
       if(geo.attributes.normal.getY(0)<0){for(let i=0;i<idx.length;i+=3)[idx[i+1],idx[i+2]]=[idx[i+2],idx[i+1]];geo.setIndex(idx);geo.computeVertexNormals();}worldUv(geo);
-      const m=new THREE.Mesh(geo,materials.grass);m.material=materials.grass.clone();m.material.side=THREE.DoubleSide;m.castShadow=m.receiveShadow=true;world.add(m);occluders.push(m);
+      const m=new THREE.Mesh(geo,materials.grass);m.material=materials.grass.clone();m.material.onBeforeCompile=materials.grass.onBeforeCompile;m.material.side=THREE.DoubleSide;m.castShadow=m.receiveShadow=true;world.add(m);occluders.push(m);
     }
   }
   const mergedWater=mergeGeometries(waterGeos);waterGeos.forEach(g=>g.dispose());
@@ -109,6 +101,8 @@ export function buildLandscape(scene,world,obstacles,occluders){
   })]);
   function tree(x,z,type,scale=1,y=0){
     if(trees.some(t=>Math.hypot(t.x-x,t.z-z)<(y?3.1:4.6)))return;
+    if(!y&&nearBoundary(x,z,1.15))return;
+    if(!y&&nearPolygon(x,z,TEACHING_COURT.points,2))return;
     if(!y&&(CAMPUS_FEATURES.some(f=>nearPolygon(x,z,f.points,2.7))||ROADS.some(r=>r.points.some((p,j)=>j&&segmentDistance(x,z,r.points[j-1],p)<r.width/2+1.65))||walkPaths.some(route=>route.some((p,j)=>j&&segmentDistance(x,z,route[j-1],p)<1.4))))return;
     trees.push({x,y,z,type,scale,rotation:random()*Math.PI*2});
     if(!y)obstacles.push({minX:x-.22,maxX:x+.22,minZ:z-.22,maxZ:z+.22,name:'tree trunk'});
@@ -161,8 +155,9 @@ export function buildLandscape(scene,world,obstacles,occluders){
   for(const group of groups.values()){
     const geo=mergeGeometries(group.geometries);group.geometries.forEach(g=>g.dispose());const mesh=new THREE.Mesh(geo,group.material);mesh.castShadow=group.cast;mesh.receiveShadow=true;world.add(mesh);
   }
-  return {water,forest,materials,get quality(){return high?'high':'low';},stats:{trees:trees.length,lakes:banks.length,roadSurfaces:ROADS.length},
-    update(time){forest.update(time);waterShader.uniforms.time.value=time*.35;simpleWater.normalMap.offset.set(time*.003,time*.0015);},
-    setQuality(value){high=value;forest.setQuality(value);water.material=value?waterShader:simpleWater;},
+  const gardens=buildGardens(world,{trees,banks,materials});
+  return {water,forest,gardens,teachingCourt,materials,get quality(){return high?'high':'low';},stats:{trees:trees.length,lakes:banks.length,roadSurfaces:ROADS.length,...gardens.stats,...roadDesign,...teachingCourt.stats},
+    update(time,camera){forest.update(time);gardens.update(time,camera);teachingCourt.update(time);waterShader.uniforms.time.value=time*.35;simpleWater.normalMap.offset.set(time*.003,time*.0015);},
+    setQuality(value){high=value;forest.setQuality(value);gardens.setQuality(value);teachingCourt.setQuality(value);water.material=value?waterShader:simpleWater;},
   };
 }

@@ -8,7 +8,7 @@ function texture(data,size,color=true){
 }
 export function surfaceTexture(kind){
   const size=256,data=new Uint8Array(size*size*4),random=seededRandom(123);
-  const palette={grass:[89,107,62],asphalt:[73,77,77],paving:[167,162,145],stone:[150,151,137],bark:[91,79,61],rock:[119,123,109],soil:[103,97,71]};
+  const palette={grass:[89,107,62],asphalt:[73,77,77],campusRoad:[109,112,101],paving:[167,162,145],stone:[150,151,137],bark:[91,79,61],rock:[119,123,109],soil:[103,97,71]};
   const base=palette[kind]||palette.stone;
   for(let y=0;y<size;y++)for(let x=0;x<size;x++){
     let grain=(random()-.5)*(kind==='asphalt'?28:22),macro=Math.sin(x*.049)*Math.cos(y*.074)*6;
@@ -65,5 +65,18 @@ export function createNatureMaterials(){
   materials.paint=new THREE.MeshStandardMaterial({color:'#e3e0c8',roughness:.88});
   materials.steel=new THREE.MeshStandardMaterial({color:'#56646a',roughness:.42,metalness:.65});
   materials.wood=new THREE.MeshStandardMaterial({color:'#776245',map:materials.bark.map,roughness:.85});
+  // Broad, world-space variation survives close-up views without tiling the
+  // grass texture into a visible grid. Keep the variation deliberately subtle.
+  materials.grass.onBeforeCompile=shader=>{
+    shader.vertexShader='varying vec2 vLawnPosition;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvLawnPosition=(modelMatrix*vec4(transformed,1.0)).xz;');
+    shader.fragmentShader=`varying vec2 vLawnPosition;
+      float lawnHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float lawnNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(lawnHash(i),lawnHash(i+vec2(1,0)),f.x),mix(lawnHash(i+vec2(0,1)),lawnHash(i+vec2(1,1)),f.x),f.y);}
+    `+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+      float lawnVariation=lawnNoise(vLawnPosition*.075)*.7+lawnNoise(vLawnPosition*.32)*.3;
+      diffuseColor.rgb*=mix(vec3(.72,.8,.64),vec3(1.14,1.1,.96),lawnVariation);`);
+  };
   return materials;
 }

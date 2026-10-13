@@ -27,12 +27,12 @@ buildingSelect.onchange=()=>{
 document.getElementById('environment-view').onchange=e=>{
  if(!e.target.value)return;document.body.classList.remove('plan');buildingSelect.value='';
  for(const id of ['aerial','north','flat'])document.getElementById(id).setAttribute('aria-pressed','false');
- const views={lake:{position:[-2,5.5,61],target:[-26,3,21]},avenue:{position:[3,3.2,197],target:[2,3,155]},sky:{position:[60,18,119],target:[-60,24,-80]}};
+ const views={teaching:{position:[66,9,-73],target:[59,1,-96]},teachingA:{position:[59,3,-95],target:[58.3,3,-105.4]},teachingB:{position:[56,3,-83],target:[47,3,-84]},teachingC:{position:[66,3,-96],target:[75,3,-91.5]},boundary:{position:[52,4.2,198],target:[72,1.1,212]},secondary:{position:[20,2.8,80],target:[28,.5,57]},crossing:{position:[125,4,29],target:[151,1,12]},garden:{position:[6.5,2.3,193],target:[12.9,.5,190]},lake:{position:[-2,5.5,61],target:[-26,3,21]},avenue:{position:[3,3.2,197],target:[2,3,155]},sky:{position:[60,18,119],target:[-60,24,-80]}};
  const view=views[e.target.value];camera.position.fromArray(view.position);controls.target.fromArray(view.target);controls.update();
  const [x,,z]=view.target;sun.position.set(x-65,110,z+60);sun.target.position.set(x,0,z);scene.add(sun.target);
  Object.assign(sun.shadow.camera,{left:-90,right:90,top:90,bottom:-90,far:260});sun.shadow.camera.updateProjectionMatrix();
 };
 drawCampusMap(document.getElementById('plan').getContext('2d'),1200,900,{expanded:true});setView('aerial');
 const clock=new THREE.Clock();
-renderer.setAnimationLoop(()=>{const time=clock.getElapsedTime();campus.landscape.update(time);atmosphere.update(time);if(!document.body.classList.contains('plan')){controls.update();renderer.render(scene,camera);}document.body.dataset.map='ready';document.body.dataset.renderStats=JSON.stringify({buildings:campus.buildings.length,environment:campus.landscape.stats,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles});});
+renderer.setAnimationLoop(()=>{const time=clock.getElapsedTime();campus.landscape.update(time,camera);atmosphere.update(time);if(!document.body.classList.contains('plan')){controls.update();renderer.render(scene,camera);}document.body.dataset.map='ready';document.body.dataset.renderStats=JSON.stringify({buildings:campus.buildings.length,environment:campus.landscape.stats,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles});});
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});

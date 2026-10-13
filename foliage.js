@@ -9,11 +9,11 @@ function branch(a,b,r0,r1){
 function treeGeometry(type){
   const random=seededRandom(77+type*39),wood=[],leaves=[];
   const tall=type===2,evergreen=type===3,height=tall?10:8.2;
-  const top=new THREE.Vector3(.15,height*.83,.1);
+  const top=new THREE.Vector3(.15,height*.93,.1);
   wood.push(branch(new THREE.Vector3(),new THREE.Vector3(.03,3,0),.25,.16));
   wood.push(branch(new THREE.Vector3(.03,3,0),top,.16,.025));
   for(let k=0;k<13;k++){
-    const angle=k*2.399+random()*.3,y=evergreen?2+k*.39:3.1+random()*2.5;
+    const angle=k*2.399+random()*.3,y=evergreen?2+k*.39:tall?3.2+k*.4:3.1+random()*2.5;
     const r=tall?.75+random()*.4:evergreen?2.4*(1-(y-2)/7):1.3+random()*1.2;
     const a=new THREE.Vector3(.03,y,0),b=new THREE.Vector3(Math.cos(angle)*r*.55,y+.55,Math.sin(angle)*r*.55),end=new THREE.Vector3(Math.cos(angle)*r,y+1.2,Math.sin(angle)*r);
     wood.push(branch(a,b,.075,.042),branch(b,end,.042,.012));
