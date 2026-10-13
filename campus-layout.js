@@ -69,6 +69,7 @@ export function nearPolygon(x,z,points,radius){
 export function featureCenter(f){return {x:f.points.reduce((s,p)=>s+p[0],0)/f.points.length,z:f.points.reduce((s,p)=>s+p[1],0)/f.points.length};}
 export function campusObstacles(){return CAMPUS_FEATURES.filter(f=>['building','water','hill'].includes(f.kind)).map(f=>({name:f.name,points:f.points}));}
 export function campusArea(x,z){
+  if(x>=118&&x<=170&&z>=6&&z<=24)return '学府大街 · 跨街天桥';
   if(x>150)return '学府大街东 · 学生生活区';
   if(z>165)return '南门入口';
   let best=null,d=Infinity;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildArchitecture } from './architecture.js';
 import { buildLandscape } from './landscape.js';
+import { buildFootbridge } from './footbridge.js';
 import { CAMPUS_FEATURES, campusObstacles } from './campus-layout.js';
 
 export function buildCampus(scene) {
@@ -43,6 +44,7 @@ export function buildCampus(scene) {
   // South gate: preserve an open, walkable passage through the official gate footprint.
   box(-7,2.2,207,1.4,4.4,1.4,'#d4c8b0');box(15,2.2,207,1.4,4.4,1.4,'#d4c8b0');box(4,4.4,207,24,.65,1.4,'#ddceb0');
   for(const x of [-7,15])obstacles.push({minX:x-.7,maxX:x+.7,minZ:206.3,maxZ:207.7});
+  const footbridge=buildFootbridge(world,obstacles,occluders);
   const landscape=buildLandscape(scene,world,obstacles,occluders);
   // Freeze static repeated geometry into GPU instances, retaining original raycast meshes.
   world.updateMatrixWorld(true);const batches=new Map();
@@ -55,5 +57,5 @@ export function buildCampus(scene) {
     const batch=new THREE.InstancedMesh(list[0].geometry,list[0].material,list.length);batch.castShadow=list[0].castShadow;batch.receiveShadow=true;
     list.forEach((m,i)=>{batch.setMatrixAt(i,m.matrixWorld);world.remove(m);});batch.computeBoundingSphere();world.add(batch);
   }
-  return {obstacles,occluders,world,buildings,landscape};
+  return {obstacles,occluders,world,buildings,landscape,footbridge};
 }
