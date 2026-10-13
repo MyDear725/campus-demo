@@ -65,6 +65,66 @@ export function getFootbridgeElevation(x, z, currentY = 0.1) {
   return FOOTBRIDGE_META.deckHeight - (FOOTBRIDGE_META.deckHeight - 0.1) * seg3.t;
 }
 
+// Constrains player movement inside the glass tube corridor and stairs.
+// Prevents player from penetrating the green glass walls or falling off the elevated structure.
+export function constrainFootbridgeMovement(targetPos, currentY = 0.1) {
+  const seg1 = projectToSegment(targetPos.x, targetPos.z, FOOTBRIDGE_META.westStart, FOOTBRIDGE_META.westSpan);
+  const seg2 = projectToSegment(targetPos.x, targetPos.z, FOOTBRIDGE_META.westSpan, FOOTBRIDGE_META.eastSpan);
+  const seg3 = projectToSegment(targetPos.x, targetPos.z, FOOTBRIDGE_META.eastSpan, FOOTBRIDGE_META.eastEnd);
+
+  let bestSeg = seg1;
+  let segId = 1;
+  if (seg2.dist < bestSeg.dist) { bestSeg = seg2; segId = 2; }
+  if (seg3.dist < bestSeg.dist) { bestSeg = seg3; segId = 3; }
+
+  // If on ground (currentY <= 0.4):
+  if (currentY <= 0.4) {
+    // Xuefu Ave road level underneath main span: completely free movement
+    if (segId === 2) return targetPos;
+
+    // Outer entrance / exit ground thresholds: completely free movement
+    if (segId === 1 && bestSeg.t <= 0.05) return targetPos;
+    if (segId === 3 && bestSeg.t >= 0.95) return targetPos;
+
+    // Outside bridge corridor on ground: completely free movement
+    if (bestSeg.dist > FOOTBRIDGE_META.width * 0.6) return targetPos;
+
+    // Ground player approaching elevated stairs side wall from outside: keep outside
+    if (segId === 1 && bestSeg.t > 0.15 && bestSeg.dist < 1.95) {
+      const nx = (targetPos.x - bestSeg.px) / (bestSeg.dist || 0.001);
+      const nz = (targetPos.z - bestSeg.pz) / (bestSeg.dist || 0.001);
+      return { x: bestSeg.px + nx * 1.95, z: bestSeg.pz + nz * 1.95 };
+    }
+    if (segId === 3 && bestSeg.t < 0.85 && bestSeg.dist < 1.95) {
+      const nx = (targetPos.x - bestSeg.px) / (bestSeg.dist || 0.001);
+      const nz = (targetPos.z - bestSeg.pz) / (bestSeg.dist || 0.001);
+      return { x: bestSeg.px + nx * 1.95, z: bestSeg.pz + nz * 1.95 };
+    }
+
+    return targetPos;
+  }
+
+  // Player is elevated on the footbridge or stairs (currentY > 0.4):
+  // If player is far away from the bridge (e.g. on other high structures), don't constrain:
+  if (bestSeg.dist > 6.0) return targetPos;
+
+  // Otherwise, player is walking inside the covered skywalk corridor!
+  // Clamping boundary inside the glass skywalk corridor (walkable half-width 1.62m)
+  const walkableHalfW = 1.62;
+  if (bestSeg.dist > walkableHalfW) {
+    const clampedPos = { ...targetPos };
+    if (bestSeg.dist > 0.0001) {
+      const nx = (targetPos.x - bestSeg.px) / bestSeg.dist;
+      const nz = (targetPos.z - bestSeg.pz) / bestSeg.dist;
+      clampedPos.x = bestSeg.px + nx * walkableHalfW;
+      clampedPos.z = bestSeg.pz + nz * walkableHalfW;
+    }
+    return clampedPos;
+  }
+
+  return targetPos;
+}
+
 export function buildFootbridge(world, obstacles = [], occluders = []) {
   const bridgeGroup = new THREE.Group();
   bridgeGroup.name = 'CampusFootbridge';
@@ -156,25 +216,36 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
   const pEastTop = new THREE.Vector3(156, FOOTBRIDGE_META.deckHeight, 17.6);
   const pEastEnd = new THREE.Vector3(171, 0.1, 18.2);
 
-  // Direction along bridge and normal vector in horizontal plane
-  const yawSpan = Math.atan2(pEastTop.z - pWestTop.z, pEastTop.x - pWestTop.x);
+  // Direction along bridge main span and normal vector in horizontal plane
+  const vSpan = pEastTop.clone().sub(pWestTop);
+  const spanLen = vSpan.length();
+  const dirSpan = vSpan.clone().normalize();
+  const yawSpan = Math.atan2(vSpan.z, vSpan.x);
   const normalSpan = new THREE.Vector3(-Math.sin(yawSpan), 0, Math.cos(yawSpan)).normalize();
+  const pMidSpan = pWestTop.clone().lerp(pEastTop, 0.5);
 
-  // --- 2. Dual White Parabolic Arches on Left & Right Flanks (两侧分开主拱，绝不插在桥面正中间) ---
-  // The two white arch ribs flank the left and right sides of the bridge,
-  // leaving the entire walkway and ramp 100% open and unobstructed!
-  const archSegments = 36;
+  // --- 2. Dual White Parabolic Arches on Left & Right Flanks (两侧分开主拱，精确对称居中) ---
+  // The dual white arch ribs flank the bridge symmetrically around pMidSpan along dirSpan:
+  // Left arch is at +archOffset * normalSpan, Right arch is at -archOffset * normalSpan.
+  // The green glass canopy is exactly at 0 * normalSpan, perfectly dead center between the dual arches!
+  const archSegments = 40;
   const archRadius = 0.32;
   const secondaryRadius = 0.18;
   const archOffset = 2.45; // 2.45m on each side (bridge width is 3.8m, half-width 1.9m)
+  const archHalfSpan = 22.0; // Arch foundation span along dirSpan from pMidSpan
+
+  const archCenterWest = pMidSpan.clone().addScaledVector(dirSpan, -archHalfSpan);
+  archCenterWest.y = 0.1;
+  const archCenterEast = pMidSpan.clone().addScaledVector(dirSpan, archHalfSpan);
+  archCenterEast.y = 0.1;
 
   const leftArchPoints = [];
   const rightArchPoints = [];
 
   for (const side of [-1, 1]) {
     const sideNorm = normalSpan.clone().multiplyScalar(side * archOffset);
-    const footingWest = new THREE.Vector3(117, 0.1, 8.0).add(sideNorm);
-    const footingEast = new THREE.Vector3(169, 0.1, 18.0).add(sideNorm);
+    const footingWest = archCenterWest.clone().add(sideNorm);
+    const footingEast = archCenterEast.clone().add(sideNorm);
 
     const mainPts = [];
     const innerPts = [];
@@ -204,7 +275,7 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
       addBeam(mainPts[i], innerPts[i], 0.10, whiteSteel);
     }
 
-    // Footing abutment blocks on the ground outside the ramp
+    // Footing abutment blocks on the ground outside the walkway
     for (const foot of [footingWest, footingEast]) {
       addBox(foot.x, 0.45, foot.z, 1.4, 0.9, 1.4, whiteSteel);
       addBox(foot.x, 1.0, foot.z, 1.0, 0.3, 1.0, whiteSteel);
@@ -212,12 +283,12 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
   }
 
   // Overhead transverse portal tie braces connecting the left and right arches above the glass tube
-  for (const tIdx of [10, 14, 18, 22, 26]) {
+  for (const tIdx of [12, 16, 20, 24, 28]) {
     const pL = leftArchPoints[tIdx];
     const pR = rightArchPoints[tIdx];
     if (pL && pR && pL.y > FOOTBRIDGE_META.deckHeight + 3.2) {
       addBeam(pL, pR, 0.12, whiteSteel);
-      if (tIdx + 4 <= 26) {
+      if (tIdx + 4 <= 28) {
         const nextL = leftArchPoints[tIdx + 4];
         const nextR = rightArchPoints[tIdx + 4];
         if (nextL && nextR) {
@@ -228,78 +299,147 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
     }
   }
 
-  // --- 3. Cylindrical Teal Glass Skywalk Corridor (透光玻璃圆筒连廊) ---
-  const tubeSpanLen = pWestTop.distanceTo(pEastTop);
-  const tubeCenterY = FOOTBRIDGE_META.deckHeight + 1.65; // corridor center
+  // --- 3. Cylindrical Teal Glass Skywalk Canopies (跨街主跨与东西两侧楼梯全覆盖透光圆筒连廊) ---
   const tubeOuterRadius = 2.15;
-  const tubeMid = pWestTop.clone().lerp(pEastTop, 0.5);
-  tubeMid.y = tubeCenterY;
 
-  // Longitudinal cylindrical glass canopy
-  const glassCylinder = new THREE.CylinderGeometry(
-    tubeOuterRadius,
-    tubeOuterRadius,
-    tubeSpanLen,
-    32,
-    1,
-    true, // open-ended tube
-    0,
-    Math.PI * 2
-  );
-  glassCylinder.rotateZ(Math.PI / 2);
-  glassCylinder.rotateY(-yawSpan);
+  function buildSkywalkCanopy(pStartFloor, pEndFloor, options = {}) {
+    const {
+      isMainSpan = false,
+      hasWestPortal = false,
+      hasEastPortal = false,
+      ringSpacing = 2.0,
+    } = options;
 
-  addMesh(glassCylinder, tealGlass, tubeMid.x, tubeMid.y, tubeMid.z, 0, 0, 0, false);
+    const pCenterA = new THREE.Vector3(pStartFloor.x, pStartFloor.y + 1.65, pStartFloor.z);
+    const pCenterB = new THREE.Vector3(pEndFloor.x, pEndFloor.y + 1.65, pEndFloor.z);
+    const v = pCenterB.clone().sub(pCenterA);
+    const tubeLen = v.length();
+    if (tubeLen < 0.001) return;
+    const dir = v.clone().normalize();
+    const mid = pCenterA.clone().lerp(pCenterB, 0.5);
 
-  // Circular structural white steel ring ribs spaced every 2.0 meters along the tube
-  const ringCount = Math.floor(tubeSpanLen / 2.0);
+    // 1. Teal Glass Cylinder Canopy
+    const glassCylinder = new THREE.CylinderGeometry(
+      tubeOuterRadius,
+      tubeOuterRadius,
+      tubeLen,
+      32,
+      1,
+      true
+    );
+    const glassMesh = new THREE.Mesh(glassCylinder, tealGlass);
+    glassMesh.position.copy(mid);
+    glassMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    bridgeGroup.add(glassMesh);
 
-  for (let i = 0; i <= ringCount; i++) {
-    const t = i / ringCount;
-    const ringPos = pWestTop.clone().lerp(pEastTop, t);
-    ringPos.y = tubeCenterY;
+    // 2. Circular structural white steel ring ribs spaced along tube
+    const ringCount = Math.max(1, Math.round(tubeLen / ringSpacing));
 
-    // Torus ring around the cylinder
-    const ringGeo = new THREE.TorusGeometry(tubeOuterRadius + 0.05, 0.075, 8, 32);
-    ringGeo.rotateY(Math.PI / 2 - yawSpan);
-    addMesh(ringGeo, whiteSteel, ringPos.x, ringPos.y, ringPos.z);
+    // Coordinate frame for rings and stringers
+    let upRef = new THREE.Vector3(0, 1, 0);
+    let rightVec = new THREE.Vector3().crossVectors(dir, upRef).normalize();
+    if (rightVec.lengthSq() < 0.001) rightVec = new THREE.Vector3(1, 0, 0);
+    let upVec = new THREE.Vector3().crossVectors(rightVec, dir).normalize();
 
-    // Suspension cables from left and right arches down to left and right sides of each ring hoop
-    const archIdx = Math.min(archSegments, Math.max(0, Math.round(t * (archSegments - 8) + 4)));
-    const leftArchPt = leftArchPoints[archIdx];
-    const rightArchPt = rightArchPoints[archIdx];
+    for (let i = 0; i <= ringCount; i++) {
+      const t = i / ringCount;
+      const ringPos = pCenterA.clone().lerp(pCenterB, t);
 
-    if (leftArchPt && leftArchPt.y > ringPos.y) {
-      const leftRingSide = ringPos.clone().addScaledVector(normalSpan, tubeOuterRadius + 0.02);
-      addBeam(leftRingSide, leftArchPt, 0.038, cableMetal);
+      // Torus ring around the cylinder
+      const ringGeo = new THREE.TorusGeometry(tubeOuterRadius + 0.05, 0.075, 8, 32);
+      const ringMesh = new THREE.Mesh(ringGeo, whiteSteel);
+      ringMesh.position.copy(ringPos);
+      ringMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+      bridgeGroup.add(ringMesh);
+
+      // For main span: suspension cables hanging from left and right arches down to ring hoops
+      if (isMainSpan) {
+        const dFromMid = -spanLen * 0.5 + t * spanLen;
+        const tArch = (dFromMid + archHalfSpan) / (2 * archHalfSpan);
+        const archIdx = Math.min(archSegments, Math.max(0, Math.round(tArch * archSegments)));
+        const leftArchPt = leftArchPoints[archIdx];
+        const rightArchPt = rightArchPoints[archIdx];
+
+        if (leftArchPt && leftArchPt.y > ringPos.y) {
+          const leftRingSide = ringPos.clone().addScaledVector(normalSpan, tubeOuterRadius + 0.02);
+          addBeam(leftRingSide, leftArchPt, 0.038, cableMetal);
+        }
+        if (rightArchPt && rightArchPt.y > ringPos.y) {
+          const rightRingSide = ringPos.clone().addScaledVector(normalSpan, -(tubeOuterRadius + 0.02));
+          addBeam(rightRingSide, rightArchPt, 0.038, cableMetal);
+        }
+      }
     }
-    if (rightArchPt && rightArchPt.y > ringPos.y) {
-      const rightRingSide = ringPos.clone().addScaledVector(normalSpan, -(tubeOuterRadius + 0.02));
-      addBeam(rightRingSide, rightArchPt, 0.038, cableMetal);
+
+    // 3. 4 Longitudinal white steel stringer rails along the glass tube
+    for (const angle of [0, Math.PI, Math.PI * 0.5, -Math.PI * 0.5]) {
+      const offset = rightVec.clone().multiplyScalar(Math.cos(angle))
+        .addScaledVector(upVec, Math.sin(angle))
+        .multiplyScalar(tubeOuterRadius + 0.04);
+      const p1 = pCenterA.clone().add(offset);
+      const p2 = pCenterB.clone().add(offset);
+      addBeam(p1, p2, 0.08, whiteSteel);
+    }
+
+    // 4. Ground Entrance Portal Frames
+    if (hasWestPortal) {
+      const portalRing = new THREE.TorusGeometry(tubeOuterRadius + 0.12, 0.11, 10, 36);
+      const pm = new THREE.Mesh(portalRing, whiteSteel);
+      pm.position.copy(pCenterA);
+      pm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+      bridgeGroup.add(pm);
+
+      const pLeftCol = pCenterA.clone().addScaledVector(rightVec, tubeOuterRadius + 0.05);
+      const pRightCol = pCenterA.clone().addScaledVector(rightVec, -(tubeOuterRadius + 0.05));
+      addBox(pLeftCol.x, pLeftCol.y * 0.5, pLeftCol.z, 0.35, pLeftCol.y, 0.35, whiteSteel);
+      addBox(pRightCol.x, pRightCol.y * 0.5, pRightCol.z, 0.35, pRightCol.y, 0.35, whiteSteel);
+
+      const pVisor = pCenterA.clone().addScaledVector(dir, -0.5);
+      addBox(pVisor.x, pCenterA.y + tubeOuterRadius * 0.65, pVisor.z, 0.8, 0.25, tubeOuterRadius * 2.1, whiteSteel);
+    }
+
+    if (hasEastPortal) {
+      const portalRing = new THREE.TorusGeometry(tubeOuterRadius + 0.12, 0.11, 10, 36);
+      const pm = new THREE.Mesh(portalRing, whiteSteel);
+      pm.position.copy(pCenterB);
+      pm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+      bridgeGroup.add(pm);
+
+      const pLeftCol = pCenterB.clone().addScaledVector(rightVec, tubeOuterRadius + 0.05);
+      const pRightCol = pCenterB.clone().addScaledVector(rightVec, -(tubeOuterRadius + 0.05));
+      addBox(pLeftCol.x, pLeftCol.y * 0.5, pLeftCol.z, 0.35, pLeftCol.y, 0.35, whiteSteel);
+      addBox(pRightCol.x, pRightCol.y * 0.5, pRightCol.z, 0.35, pRightCol.y, 0.35, whiteSteel);
+
+      const pVisor = pCenterB.clone().addScaledVector(dir, 0.5);
+      addBox(pVisor.x, pCenterB.y + tubeOuterRadius * 0.65, pVisor.z, 0.8, 0.25, tubeOuterRadius * 2.1, whiteSteel);
     }
   }
 
-  // 4 Longitudinal white steel stringer rails along the glass tube
-  for (const [angleOffset] of [
-    [0], // top ridge
-    [Math.PI], // bottom keel
-    [Math.PI * 0.5], // left waist
-    [-Math.PI * 0.5], // right waist
-  ]) {
-    const p1 = pWestTop.clone();
-    p1.y = tubeCenterY + Math.cos(angleOffset) * (tubeOuterRadius + 0.04);
-    p1.x -= Math.sin(yawSpan) * Math.sin(angleOffset) * (tubeOuterRadius + 0.04);
-    p1.z += Math.cos(yawSpan) * Math.sin(angleOffset) * (tubeOuterRadius + 0.04);
+  // Build Skywalk Canopies for:
+  // - West Approach Stairs (sloping up from campus ground to main span)
+  buildSkywalkCanopy(pWestStart, pWestTop, { hasWestPortal: true });
+  // - Main Span across Xuefu Avenue (horizontal covered span dead center between arches)
+  buildSkywalkCanopy(pWestTop, pEastTop, { isMainSpan: true });
+  // - East Approach Stairs (sloping down from main span to Sixth Canteen Plaza)
+  buildSkywalkCanopy(pEastTop, pEastEnd, { hasEastPortal: true });
 
-    const p2 = pEastTop.clone();
-    p2.y = tubeCenterY + Math.cos(angleOffset) * (tubeOuterRadius + 0.04);
-    p2.x -= Math.sin(yawSpan) * Math.sin(angleOffset) * (tubeOuterRadius + 0.04);
-    p2.z += Math.cos(yawSpan) * Math.sin(angleOffset) * (tubeOuterRadius + 0.04);
+  // Structural transition knuckle collars at West and East junctions
+  for (const knucklePt of [pWestTop, pEastTop]) {
+    const pCenter = new THREE.Vector3(knucklePt.x, knucklePt.y + 1.65, knucklePt.z);
+    const knuckleRing = new THREE.TorusGeometry(tubeOuterRadius + 0.10, 0.12, 10, 36);
+    const km = new THREE.Mesh(knuckleRing, whiteSteel);
+    km.position.copy(pCenter);
+    km.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirSpan);
+    bridgeGroup.add(km);
 
-    addBeam(p1, p2, 0.08, whiteSteel);
+    addBox(pCenter.x, knucklePt.y * 0.5, pCenter.z, 0.35, knucklePt.y, 0.35, whiteSteel);
   }
 
   // --- 4. Main Walking Deck & Bridge Soffit across the Avenue ---
+  const tubeMid = pMidSpan;
+  const tubeSpanLen = spanLen;
+  const ringCount = Math.max(1, Math.round(spanLen / 2.0));
+
   // Deck floor: 3.8m wide, 0.24m thick
   const deckBox = addBox(
     tubeMid.x,

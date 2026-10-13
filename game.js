@@ -5,7 +5,7 @@ import { GUIDE, BOARD, MEMORY_SPOTS, DORMITORIES, QUEST_ROUTES, campusArea } fro
 import { drawCampusMap } from './campus-map.js';
 import { START, COLLEGES, GENDERS, ENROLLMENT_YEAR, findCollege, findGender, sanitizePlayerName, generateStudentId, parseStudentId, assignDormitory, enrollStudent, buildPrologueScript, completePrologue, freshSaveRegistry, sanitizeSaveRegistry, getSaveSlot, createSaveSlot, updateSaveSlot, deleteSaveSlot, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest, findDormitory, freshLifeState, sanitizeLifeState, advanceGameTime, formatGameClock, planSleepSchedule, executeSleep, daylightProfile } from './logic.js';
 import { upgradeAvatar } from './avatar.js';
-import { getFootbridgeElevation } from './footbridge.js';
+import { getFootbridgeElevation, constrainFootbridgeMovement } from './footbridge.js';
 import { movementAction, resolveKeyCode, WALK_SPEED, RUN_SPEED } from './motion.js';
 import { createMouseLook, rotateLook, smoothLook, orbitOffset, followDistance } from './camera-controls.js';
 
@@ -728,7 +728,10 @@ function stepPlayer(dt){
     $('movement-status').textContent=sprint?'奔跑中':'自由探索中';
     actualSpeed=0;landing=Math.max(0,landing-dt);
     if(moving){const n=Math.hypot(forward,right);forward/=n;right/=n;const speed=sprint?RUN_SPEED:WALK_SPEED;const dx=(right*Math.cos(yaw)-forward*Math.sin(yaw))*speed*dt;const dz=(-forward*Math.cos(yaw)-right*Math.sin(yaw))*speed*dt;
-      const p=moveWithCollision(hero.g.position,dx,dz,obstacles);actualSpeed=Math.hypot(p.x-hero.g.position.x,p.z-hero.g.position.z)/Math.max(dt,.0001);hero.g.position.x=p.x;hero.g.position.z=p.z;
+      const p=moveWithCollision(hero.g.position,dx,dz,obstacles);
+      const cp=constrainFootbridgeMovement(p,hero.g.position.y);
+      actualSpeed=Math.hypot(cp.x-hero.g.position.x,cp.z-hero.g.position.z)/Math.max(dt,.0001);
+      hero.g.position.x=cp.x;hero.g.position.z=cp.z;
       stepPhase+=dt*(sprint?14:9);hero.legs[0].rotation.x=Math.sin(stepPhase)*.65;hero.legs[1].rotation.x=-Math.sin(stepPhase)*.65;hero.arms[0].rotation.x=-Math.sin(stepPhase)*.5;hero.arms[1].rotation.x=Math.sin(stepPhase)*.5;hero.tail.rotation.x=-.25-(sprint?.3:0)+Math.sin(stepPhase)*.1;
     }else for(const limb of [...hero.legs,...hero.arms])limb.rotation.x*=Math.exp(-dt*12);
     const floorY=getFootbridgeElevation(hero.g.position.x,hero.g.position.z,hero.g.position.y);

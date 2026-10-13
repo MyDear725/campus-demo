@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CAMPUS_FEATURES, GUIDE, CAMPUS_START, MEMORY_SPOTS, DORMITORIES, QUEST_ROUTES, campusObstacles, campusArea, featureCenter, pointInPolygon } from '../campus-layout.js';
-import { FOOTBRIDGE_META, getFootbridgeElevation, isPointOnFootbridge } from '../footbridge.js';
+import { FOOTBRIDGE_META, getFootbridgeElevation, isPointOnFootbridge, constrainFootbridgeMovement } from '../footbridge.js';
 import { MAP_META } from '../campus-data.js';
 import { collides, moveWithCollision } from '../logic.js';
 const obstacles=campusObstacles();
@@ -89,5 +89,25 @@ test('xuefu avenue footbridge connects campus core to sixth canteen plaza with a
 
   // Campus area recognises the bridge
   assert.equal(campusArea(144, 15), '学府大街 · 跨街天桥');
+
+  // Lateral movement on bridge deck cannot penetrate green glass walls (constrained to <= 1.62m half-width)
+  const normX = -5 / Math.hypot(24, 5), normZ = 24 / Math.hypot(24, 5);
+  const wallPenetrationAttempt = constrainFootbridgeMovement({ x: 144 + normX * 3.0, z: 15.1 + normZ * 3.0 }, 4.5);
+  const distFromCenterline = Math.hypot(wallPenetrationAttempt.x - 144, wallPenetrationAttempt.z - 15.1);
+  assert.ok(Math.abs(distFromCenterline - 1.62) < 0.001, `clamped to 1.62m from centerline, got ${distFromCenterline}`);
+
+  // Lateral movement on stairs is similarly enclosed inside the skywalk canopy
+  const stairsAttempt = constrainFootbridgeMovement({ x: 124, z: 13.0 }, 2.3);
+  assert.ok(isPointOnFootbridge(stairsAttempt.x, stairsAttempt.z));
+
+  // Walking on Xuefu Ave street underneath the bridge (y <= 0.4) is not blocked
+  const streetWalk = constrainFootbridgeMovement({ x: 144, z: 18.5 }, 0.1);
+  assert.equal(streetWalk.x, 144);
+  assert.equal(streetWalk.z, 18.5);
+
+  // Exiting stairs at ground level into Sixth Canteen plaza is unconstrained
+  const plazaExit = constrainFootbridgeMovement({ x: 173, z: 18.2 }, 0.1);
+  assert.equal(plazaExit.x, 173);
+  assert.equal(plazaExit.z, 18.2);
 });
 
