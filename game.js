@@ -189,8 +189,8 @@ function save(){
 }
 function updateStartScreenHint(){
   const count=saveRegistry.saves.length;
-  if($('open-saves-button'))$('open-saves-button').textContent=`存档管理（共 ${count} 个存档 · 创建 / 读取 / 删除）`;
-  if(life.enrolled&&life.prologueCompleted&&saveRegistry.activeSaveId){
+  const hasActiveSave=Boolean(saveRegistry.activeSaveId&&getSaveSlot(saveRegistry,saveRegistry.activeSaveId));
+  if(hasActiveSave){
     $('start-button').innerHTML='继续当前存档 <span>→</span>';
     $('saved-hint').textContent=`当前存档：${life.playerName}（${life.genderLabel} · 学号 ${life.studentId}） · ${life.collegeName} · ${life.dormName} ${life.room}`;
   }else{
@@ -243,7 +243,7 @@ function updateTimeHUD(){
 }
 updateDormVisuals();updateTimeHUD();
 
-let mode='start',yaw=0,pitch=.35,camDistance=5.5,velocityY=0,grounded=true,stamina=100,elapsed=0,stepPhase=0,toastTimer=0;
+let mode='start',yaw=0,pitch=.35,camDistance=5.5,velocityY=0,grounded=true,stamina=100,exhausted=false,elapsed=0,stepPhase=0,toastTimer=0;
 let targetYaw=yaw,targetPitch=pitch;
 let landing=0,playerAction='Idle',actualSpeed=0;
 function turnView(dx,dy){({yaw:targetYaw,pitch:targetPitch}=rotateLook(targetYaw,targetPitch,dx,dy));}
@@ -623,7 +623,8 @@ if($('close-saves-btn'))$('close-saves-btn').onclick=()=>{
   }
 };
 $('start-button').onclick=()=>{
-  if(life.enrolled&&life.prologueCompleted&&saveRegistry.activeSaveId){
+  const hasActiveSave=Boolean(saveRegistry.activeSaveId&&getSaveSlot(saveRegistry,saveRegistry.activeSaveId));
+  if(hasActiveSave){
     loadSaveById(saveRegistry.activeSaveId);
   }else{
     openCharacterScreen('start');
