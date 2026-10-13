@@ -13,65 +13,56 @@ export const FOOTBRIDGE_META = {
   width: 3.8,
 };
 
-// Check if a point is on the elevated footbridge walkway or ramp
-export function isPointOnFootbridge(x, z) {
-  const [x0, z0] = FOOTBRIDGE_META.westStart;
-  const [x1, z1] = FOOTBRIDGE_META.eastEnd;
-  const dx = x1 - x0, dz = z1 - z0;
+function projectToSegment(x, z, a, b) {
+  const dx = b[0] - a[0], dz = b[1] - a[1];
   const lenSq = dx * dx + dz * dz;
-  const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / lenSq));
-  const projX = x0 + t * dx, projZ = z0 + t * dz;
-  const dist = Math.hypot(x - projX, z - projZ);
-  return dist <= FOOTBRIDGE_META.width * 0.58;
+  if (lenSq === 0) return { t: 0, dist: Math.hypot(x - a[0], z - a[1]) };
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / lenSq));
+  const px = a[0] + t * dx, pz = a[1] + t * dz;
+  const dist = Math.hypot(x - px, z - pz);
+  return { t, dist, px, pz };
+}
+
+// Check if a point is on the elevated footbridge walkway, stairs, or span
+export function isPointOnFootbridge(x, z) {
+  const seg1 = projectToSegment(x, z, FOOTBRIDGE_META.westStart, FOOTBRIDGE_META.westSpan);
+  const seg2 = projectToSegment(x, z, FOOTBRIDGE_META.westSpan, FOOTBRIDGE_META.eastSpan);
+  const seg3 = projectToSegment(x, z, FOOTBRIDGE_META.eastSpan, FOOTBRIDGE_META.eastEnd);
+  const minDist = Math.min(seg1.dist, seg2.dist, seg3.dist);
+  return minDist <= FOOTBRIDGE_META.width * 0.58;
 }
 
 // Elevation function for player walking:
-// - Returns y in [0.1, 4.5] when on the bridge/ramps
-// - If player is on the ground underneath the bridge on Xuefu Ave, returns 0.1
+// - Returns y in [0.1, 4.5] when on the bridge deck or stairs
+// - Section 1 (West Stairs): rises from 0.1 to 4.5
+// - Section 2 (Main Covered Span): firmly 4.5m across Xuefu Ave (or 0.1 if player is on the street underneath)
+// - Section 3 (East Stairs): descends from 4.5 to 0.1 into Sixth Canteen Plaza
 export function getFootbridgeElevation(x, z, currentY = 0.1) {
-  const [x0, z0] = FOOTBRIDGE_META.westStart;
-  const [x1, z1] = FOOTBRIDGE_META.eastEnd;
-  const dx = x1 - x0, dz = z1 - z0;
-  const lenSq = dx * dx + dz * dz;
-  const t = ((x - x0) * dx + (z - z0) * dz) / lenSq;
-  if (t < -0.05 || t > 1.05) return 0.1;
-
-  const projX = x0 + t * dx, projZ = z0 + t * dz;
-  const dist = Math.hypot(x - projX, z - projZ);
+  const seg1 = projectToSegment(x, z, FOOTBRIDGE_META.westStart, FOOTBRIDGE_META.westSpan);
+  const seg2 = projectToSegment(x, z, FOOTBRIDGE_META.westSpan, FOOTBRIDGE_META.eastSpan);
+  const seg3 = projectToSegment(x, z, FOOTBRIDGE_META.eastSpan, FOOTBRIDGE_META.eastEnd);
   const halfW = FOOTBRIDGE_META.width * 0.58;
-  if (dist > halfW) return 0.1;
 
-  const totalLen = Math.hypot(dx, dz);
-  const s = t * totalLen; // distance along bridge axis in meters
+  let bestSeg = 1;
+  let minDist = seg1.dist;
+  if (seg2.dist < minDist) { minDist = seg2.dist; bestSeg = 2; }
+  if (seg3.dist < minDist) { minDist = seg3.dist; bestSeg = 3; }
 
-  // West ramp: s in [0, 16] -> y rises smoothly from 0.1 to 4.5
-  // Bridge span: s in [16, 40] -> y is 4.5
-  // East ramp: s in [40, 55] -> y descends smoothly from 4.5 to 0.1
-  const westRampLen = 16.0;
-  const eastRampStart = 40.0;
-  const eastRampEnd = 55.0;
+  if (minDist > halfW) return 0.1;
 
-  let bridgeDeckY = 0.1;
-  if (s <= 0) {
-    bridgeDeckY = 0.1;
-  } else if (s < westRampLen) {
-    const rampT = s / westRampLen;
-    bridgeDeckY = 0.1 + 4.4 * (0.5 - 0.5 * Math.cos(Math.PI * rampT));
-  } else if (s <= eastRampStart) {
-    bridgeDeckY = FOOTBRIDGE_META.deckHeight;
-  } else if (s < eastRampEnd) {
-    const rampT = (s - eastRampStart) / (eastRampEnd - eastRampStart);
-    bridgeDeckY = 0.1 + 4.4 * (0.5 + 0.5 * Math.cos(Math.PI * rampT));
-  } else {
-    bridgeDeckY = 0.1;
+  if (bestSeg === 2) {
+    // If player is on Xuefu Ave roadway underneath (currentY <= 2.0), keep them on the road!
+    if (currentY <= 2.0) return 0.1;
+    return FOOTBRIDGE_META.deckHeight;
   }
-
-  // If the player is on the road below (currentY < 1.8) and right over the roadway (s between 18 and 38), keep them on the ground
-  if (currentY < 1.8 && s >= 18.0 && s <= 38.0) {
-    return 0.1;
+  if (bestSeg === 1) {
+    if (seg1.t <= 0) return 0.1;
+    if (seg1.t >= 1) return FOOTBRIDGE_META.deckHeight;
+    return 0.1 + (FOOTBRIDGE_META.deckHeight - 0.1) * seg1.t;
   }
-
-  return bridgeDeckY;
+  if (seg3.t >= 1) return 0.1;
+  if (seg3.t <= 0) return FOOTBRIDGE_META.deckHeight;
+  return FOOTBRIDGE_META.deckHeight - (FOOTBRIDGE_META.deckHeight - 0.1) * seg3.t;
 }
 
 export function buildFootbridge(world, obstacles = [], occluders = []) {
@@ -391,127 +382,304 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
     }
   }
 
-  // --- 5. West Approach Ramp (主校区侧缓坡引桥 —— 内部100%无立柱完全通畅) ---
-  const westRampLen = pWestStart.distanceTo(pWestTop);
-  const westRampMid = pWestStart.clone().lerp(pWestTop, 0.5);
-  const westRampYaw = Math.atan2(pWestTop.z - pWestStart.z, pWestTop.x - pWestStart.x);
-  const westRampPitch = Math.atan2(pWestTop.y - pWestStart.y, Math.hypot(pWestTop.x - pWestStart.x, pWestTop.z - pWestStart.z));
+  // Helper to build architectural outdoor pedestrian stairs (台阶踏步与休息平台)
+  function buildStaircaseFlight(pStart, pEnd, options = {}) {
+    const {
+      stepCount = 20,
+      midLandingRatio = 0.5,
+      midLandingLen = 2.2,
+      railOffset = FOOTBRIDGE_META.width * 0.5 - 0.14,
+    } = options;
 
-  // Sloping deck
-  addBox(
-    westRampMid.x,
-    westRampMid.y - 0.1,
-    westRampMid.z,
-    westRampLen,
-    0.22,
-    FOOTBRIDGE_META.width,
-    deckPaving,
-    0,
-    -westRampYaw,
-    westRampPitch
-  );
+    const totalDx = pEnd.x - pStart.x;
+    const totalDz = pEnd.z - pStart.z;
+    const horizLen = Math.hypot(totalDx, totalDz);
+    const vertH = pEnd.y - pStart.y;
+    const yaw = Math.atan2(totalDz, totalDx);
+    const pitch = Math.atan2(vertH, horizLen);
 
-  // Support piers under west ramp (placed underneath the ramp deck)
-  for (const t of [0.35, 0.72]) {
-    const pt = pWestStart.clone().lerp(pWestTop, t);
-    const h = pt.y - 0.1;
-    if (h > 0.6) {
-      addBox(pt.x, h * 0.5, pt.z, 0.7, h, 2.6, whiteSteel);
+    const nx = -Math.sin(yaw);
+    const nz = Math.cos(yaw);
+
+    // Mid landing platform (休息缓冲平台)
+    const midT = midLandingRatio;
+    const pMid = pStart.clone().lerp(pEnd, midT);
+    const midPlatformY = pMid.y;
+
+    addBox(
+      pMid.x,
+      midPlatformY - 0.12,
+      pMid.z,
+      midLandingLen,
+      0.24,
+      FOOTBRIDGE_META.width,
+      deckPaving,
+      0,
+      -yaw,
+      0
+    );
+
+    // Support pier under mid landing
+    if (midPlatformY > 0.8) {
+      addBox(pMid.x, midPlatformY * 0.5 - 0.12, pMid.z, 0.8, midPlatformY, 2.6, whiteSteel);
     }
-  }
 
-  // Railings along west ramp
-  for (const side of [-1, 1]) {
-    const railOffset = (FOOTBRIDGE_META.width * 0.5 - 0.14) * side;
-    const nx = -Math.sin(westRampYaw) * railOffset;
-    const nz = Math.cos(westRampYaw) * railOffset;
+    // Two flights of stone steps
+    const flight1Count = Math.floor(stepCount / 2);
+    const flight2Count = stepCount - flight1Count;
 
-    addBox(
-      westRampMid.x + nx,
-      westRampMid.y + 1.05,
-      westRampMid.z + nz,
-      westRampLen,
-      0.08,
-      0.08,
-      railingMetal,
-      0,
-      -westRampYaw,
-      westRampPitch
-    );
-    addBox(
-      westRampMid.x + nx,
-      westRampMid.y + 0.55,
-      westRampMid.z + nz,
-      westRampLen,
-      0.04,
-      0.04,
-      railingMetal,
-      0,
-      -westRampYaw,
-      westRampPitch
-    );
-  }
+    const midHalfLenT = (midLandingLen * 0.5) / horizLen;
+    const flight1EndT = Math.max(0.05, midT - midHalfLenT);
+    const flight2StartT = Math.min(0.95, midT + midHalfLenT);
 
-  // --- 6. East Approach Ramp & Sixth Canteen Landing Plaza (第六食堂侧引桥与广场) ---
-  const eastRampLen = pEastTop.distanceTo(pEastEnd);
-  const eastRampMid = pEastTop.clone().lerp(pEastEnd, 0.5);
-  const eastRampYaw = Math.atan2(pEastEnd.z - pEastTop.z, pEastEnd.x - pEastTop.x);
-  const eastRampPitch = -Math.atan2(pEastTop.y - pEastEnd.y, Math.hypot(pEastEnd.x - pEastTop.x, pEastEnd.z - pEastTop.z));
-
-  // Sloping deck down to the plaza
-  addBox(
-    eastRampMid.x,
-    eastRampMid.y - 0.1,
-    eastRampMid.z,
-    eastRampLen,
-    0.22,
-    FOOTBRIDGE_META.width,
-    deckPaving,
-    0,
-    -eastRampYaw,
-    eastRampPitch
-  );
-
-  // Support piers under east ramp (placed underneath the ramp deck)
-  for (const t of [0.32, 0.68]) {
-    const pt = pEastTop.clone().lerp(pEastEnd, t);
-    const h = pt.y - 0.1;
-    if (h > 0.6) {
-      addBox(pt.x, h * 0.5, pt.z, 0.7, h, 2.6, whiteSteel);
+    // Flight 1 (Lower flight steps)
+    const stepDepth1 = (flight1EndT * horizLen) / flight1Count;
+    for (let i = 0; i < flight1Count; i++) {
+      const t = (i + 0.5) / flight1Count * flight1EndT;
+      const pt = pStart.clone().lerp(pEnd, t);
+      const stepY = pStart.y + (pMid.y - pStart.y) * ((i + 1) / flight1Count);
+      addBox(
+        pt.x,
+        stepY - 0.11,
+        pt.z,
+        stepDepth1 * 1.08,
+        0.22,
+        FOOTBRIDGE_META.width,
+        deckPaving,
+        0,
+        -yaw,
+        0
+      );
+      const baseH = Math.max(0.1, stepY - pStart.y);
+      if (baseH > 0.25) {
+        addBox(
+          pt.x,
+          pStart.y + (baseH - 0.22) * 0.5,
+          pt.z,
+          stepDepth1 * 0.95,
+          baseH - 0.22,
+          FOOTBRIDGE_META.width - 0.08,
+          deckUnderside,
+          0,
+          -yaw,
+          0
+        );
+      }
     }
+
+    // Flight 2 (Upper flight steps)
+    const stepDepth2 = ((1.0 - flight2StartT) * horizLen) / flight2Count;
+    for (let i = 0; i < flight2Count; i++) {
+      const t = flight2StartT + (i + 0.5) / flight2Count * (1.0 - flight2StartT);
+      const pt = pStart.clone().lerp(pEnd, t);
+      const stepY = pMid.y + (pEnd.y - pMid.y) * ((i + 1) / flight2Count);
+      addBox(
+        pt.x,
+        stepY - 0.11,
+        pt.z,
+        stepDepth2 * 1.08,
+        0.22,
+        FOOTBRIDGE_META.width,
+        deckPaving,
+        0,
+        -yaw,
+        0
+      );
+      const baseH = Math.max(0.1, stepY - pStart.y);
+      if (baseH > 0.6) {
+        addBox(
+          pt.x,
+          pStart.y + (baseH - 0.22) * 0.5,
+          pt.z,
+          stepDepth2 * 0.95,
+          baseH - 0.22,
+          FOOTBRIDGE_META.width - 0.08,
+          deckUnderside,
+          0,
+          -yaw,
+          0
+        );
+      }
+    }
+
+    // Side stringers and railings along stairs
+    for (const side of [-1, 1]) {
+      const offX = nx * railOffset * side;
+      const offZ = nz * railOffset * side;
+
+      // Lower stringer
+      const mid1 = pStart.clone().lerp(pMid, 0.5);
+      const len1 = horizLen * flight1EndT;
+      addBox(
+        mid1.x + offX,
+        mid1.y + 0.1,
+        mid1.z + offZ,
+        len1,
+        0.32,
+        0.12,
+        whiteSteel,
+        0,
+        -yaw,
+        pitch
+      );
+
+      // Upper stringer
+      const mid2 = pMid.clone().lerp(pEnd, 0.5);
+      const len2 = horizLen * (1.0 - flight2StartT);
+      addBox(
+        mid2.x + offX,
+        mid2.y + 0.1,
+        mid2.z + offZ,
+        len2,
+        0.32,
+        0.12,
+        whiteSteel,
+        0,
+        -yaw,
+        pitch
+      );
+
+      // Flight 1 Handrails
+      addBox(
+        mid1.x + offX,
+        mid1.y + 1.05,
+        mid1.z + offZ,
+        len1,
+        0.08,
+        0.08,
+        railingMetal,
+        0,
+        -yaw,
+        pitch
+      );
+      addBox(
+        mid1.x + offX,
+        mid1.y + 0.55,
+        mid1.z + offZ,
+        len1,
+        0.04,
+        0.04,
+        railingMetal,
+        0,
+        -yaw,
+        pitch
+      );
+
+      // Mid platform Handrails
+      addBox(
+        pMid.x + offX,
+        midPlatformY + 1.05,
+        pMid.z + offZ,
+        midLandingLen,
+        0.08,
+        0.08,
+        railingMetal,
+        0,
+        -yaw,
+        0
+      );
+      addBox(
+        pMid.x + offX,
+        midPlatformY + 0.55,
+        pMid.z + offZ,
+        midLandingLen,
+        0.04,
+        0.04,
+        railingMetal,
+        0,
+        -yaw,
+        0
+      );
+
+      // Flight 2 Handrails
+      addBox(
+        mid2.x + offX,
+        mid2.y + 1.05,
+        mid2.z + offZ,
+        len2,
+        0.08,
+        0.08,
+        railingMetal,
+        0,
+        -yaw,
+        pitch
+      );
+      addBox(
+        mid2.x + offX,
+        mid2.y + 0.55,
+        mid2.z + offZ,
+        len2,
+        0.04,
+        0.04,
+        railingMetal,
+        0,
+        -yaw,
+        pitch
+      );
+
+      // Baluster vertical posts
+      for (const t of [0.05, 0.25, flight1EndT, midT, flight2StartT, 0.75, 0.95]) {
+        const pt = pStart.clone().lerp(pEnd, t);
+        const stairY = t <= midT
+          ? pStart.y + (pMid.y - pStart.y) * (t / midT)
+          : pMid.y + (pEnd.y - pMid.y) * ((t - midT) / (1 - midT));
+        addBox(
+          pt.x + offX,
+          stairY + 0.55,
+          pt.z + offZ,
+          0.06,
+          1.1,
+          0.06,
+          railingMetal,
+          0,
+          -yaw,
+          0
+        );
+      }
+    }
+
+    // Top threshold landing
+    addBox(
+      pEnd.x,
+      pEnd.y - 0.12,
+      pEnd.z,
+      1.4,
+      0.24,
+      FOOTBRIDGE_META.width,
+      deckPaving,
+      0,
+      -yaw,
+      0
+    );
+
+    // Bottom entrance base step
+    addBox(
+      pStart.x,
+      pStart.y + 0.05,
+      pStart.z,
+      1.4,
+      0.12,
+      FOOTBRIDGE_META.width + 0.4,
+      stonePlaza,
+      0,
+      -yaw,
+      0
+    );
   }
 
-  // Railings along east ramp
-  for (const side of [-1, 1]) {
-    const railOffset = (FOOTBRIDGE_META.width * 0.5 - 0.14) * side;
-    const nx = -Math.sin(eastRampYaw) * railOffset;
-    const nz = Math.cos(eastRampYaw) * railOffset;
+  // --- 5. West Approach Stairs (主校区侧双段石阶与休息平台 —— 绝非斜坡) ---
+  buildStaircaseFlight(pWestStart, pWestTop, {
+    stepCount: 20,
+    midLandingRatio: 0.5,
+    midLandingLen: 2.2,
+  });
 
-    addBox(
-      eastRampMid.x + nx,
-      eastRampMid.y + 1.05,
-      eastRampMid.z + nz,
-      eastRampLen,
-      0.08,
-      0.08,
-      railingMetal,
-      0,
-      -eastRampYaw,
-      eastRampPitch
-    );
-    addBox(
-      eastRampMid.x + nx,
-      eastRampMid.y + 0.55,
-      eastRampMid.z + nz,
-      eastRampLen,
-      0.04,
-      0.04,
-      railingMetal,
-      0,
-      -eastRampYaw,
-      eastRampPitch
-    );
-  }
+  // --- 6. East Approach Stairs (第六食堂侧双段石阶与休息平台 —— 连通东苑广场) ---
+  buildStaircaseFlight(pEastEnd, pEastTop, {
+    stepCount: 20,
+    midLandingRatio: 0.5,
+    midLandingLen: 2.2,
+  });
 
   // Sixth Canteen western plaza paving extension connecting ramp landing directly to canteen doors
   addBox(177, 0.08, 18.2, 13, 0.08, 16, stonePlaza, 0, 0, 0, false);

@@ -71,6 +71,22 @@ test('xuefu avenue footbridge connects campus core to sixth canteen plaza with a
   const eastEnd = getFootbridgeElevation(171, 18.2);
   assert.equal(eastEnd, 0.1);
 
+  // Walking continuously along bridge centerline from west stairs to east stairs never traps player underneath
+  let walkY = 0.1;
+  const pathSteps = [
+    [116, 7.8], [120, 9.0], [124, 10.2], [128, 11.4], [132, 12.6],
+    [138, 13.85], [144, 15.1], [150, 16.35], [156, 17.6],
+    [160, 17.75], [164, 17.9], [168, 18.05], [171, 18.2]
+  ];
+  for (const [x, z] of pathSteps) {
+    walkY = getFootbridgeElevation(x, z, walkY);
+    assert.ok(walkY >= 0.1 && walkY <= 4.5, `elevation out of bounds at ${x}, ${z}: ${walkY}`);
+    if (x >= 132 && x <= 156) {
+      assert.equal(walkY, 4.5, `on bridge deck at ${x}, ${z} must be 4.5m, got ${walkY}`);
+    }
+  }
+  assert.equal(walkY, 0.1);
+
   // Campus area recognises the bridge
   assert.equal(campusArea(144, 15), '学府大街 · 跨街天桥');
 });
