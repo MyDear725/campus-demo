@@ -3,7 +3,7 @@ import * as THREE from 'three';
 export const FOOTBRIDGE_META = {
   id: 'footbridge-xuefu',
   name: '学府大街跨街天桥',
-  description: '连接教学区核心与第六学生食堂、生活区的标志性白色拱形透光圆筒人行天桥',
+  description: '连接教学区核心与第六学生食堂、生活区的标志性白色双拱透光圆筒人行天桥',
   westStart: [116, 7.8],
   westSpan: [132, 12.6],
   eastSpan: [156, 17.6],
@@ -66,7 +66,6 @@ export function getFootbridgeElevation(x, z, currentY = 0.1) {
     bridgeDeckY = 0.1;
   }
 
-  // If the player is already elevated or entering through the ramp endpoints, they are on the bridge
   // If the player is on the road below (currentY < 1.8) and right over the roadway (s between 18 and 38), keep them on the ground
   if (currentY < 1.8 && s >= 18.0 && s <= 38.0) {
     return 0.1;
@@ -166,56 +165,76 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
   const pEastTop = new THREE.Vector3(156, FOOTBRIDGE_META.deckHeight, 17.6);
   const pEastEnd = new THREE.Vector3(171, 0.1, 18.2);
 
-  // Direction unit vector along bridge
-  const dirSpan = pEastTop.clone().sub(pWestTop).normalize();
-  const angleSpan = Math.atan2(dirSpan.x, dirSpan.z);
+  // Direction along bridge and normal vector in horizontal plane
   const yawSpan = Math.atan2(pEastTop.z - pWestTop.z, pEastTop.x - pWestTop.x);
+  const normalSpan = new THREE.Vector3(-Math.sin(yawSpan), 0, Math.cos(yawSpan)).normalize();
 
-  // --- 2. Soaring White Parabolic Arch Structure (白色大跨度主拱) ---
-  const archWestFooting = new THREE.Vector3(123, 0.2, 9.8);
-  const archEastFooting = new THREE.Vector3(164.5, 0.2, 18.6);
-  const archSpan = archWestFooting.distanceTo(archEastFooting);
+  // --- 2. Dual White Parabolic Arches on Left & Right Flanks (两侧分开主拱，绝不插在桥面正中间) ---
+  // The two white arch ribs flank the left and right sides of the bridge,
+  // leaving the entire walkway and ramp 100% open and unobstructed!
   const archSegments = 36;
-  const archRadius = 0.38;
-  const secondaryRadius = 0.22;
+  const archRadius = 0.32;
+  const secondaryRadius = 0.18;
+  const archOffset = 2.45; // 2.45m on each side (bridge width is 3.8m, half-width 1.9m)
 
-  const archPoints = [];
-  const archSecondaryPoints = [];
+  const leftArchPoints = [];
+  const rightArchPoints = [];
 
-  for (let i = 0; i <= archSegments; i++) {
-    const t = i / archSegments;
-    const p = archWestFooting.clone().lerp(archEastFooting, t);
-    // Parabolic arc equation: peak at t = 0.5
-    const archY = 0.2 + FOOTBRIDGE_META.archHeight * (4 * t * (1 - t));
-    p.y = archY;
-    archPoints.push(p);
+  for (const side of [-1, 1]) {
+    const sideNorm = normalSpan.clone().multiplyScalar(side * archOffset);
+    const footingWest = new THREE.Vector3(117, 0.1, 8.0).add(sideNorm);
+    const footingEast = new THREE.Vector3(169, 0.1, 18.0).add(sideNorm);
 
-    // Inner secondary parallel arch chord
-    const innerP = p.clone();
-    innerP.y = Math.max(0.5, archY - 0.75);
-    archSecondaryPoints.push(innerP);
+    const mainPts = [];
+    const innerPts = [];
+
+    for (let i = 0; i <= archSegments; i++) {
+      const t = i / archSegments;
+      const p = footingWest.clone().lerp(footingEast, t);
+      // Parabolic arc formula: peak at t = 0.5
+      const archY = 0.1 + FOOTBRIDGE_META.archHeight * (4 * t * (1 - t));
+      p.y = archY;
+      mainPts.push(p);
+
+      const innerP = p.clone();
+      innerP.y = Math.max(0.4, archY - 0.7);
+      innerPts.push(innerP);
+    }
+
+    if (side === 1) leftArchPoints.push(...mainPts);
+    else rightArchPoints.push(...mainPts);
+
+    // Beams and truss webbing for this flank arch
+    for (let i = 0; i < archSegments; i++) {
+      addBeam(mainPts[i], mainPts[i + 1], archRadius, whiteSteel);
+      addBeam(innerPts[i], innerPts[i + 1], secondaryRadius, whiteSteel);
+      addBeam(mainPts[i], innerPts[i + 1], 0.08, whiteSteel);
+      addBeam(innerPts[i], mainPts[i + 1], 0.08, whiteSteel);
+      addBeam(mainPts[i], innerPts[i], 0.10, whiteSteel);
+    }
+
+    // Footing abutment blocks on the ground outside the ramp
+    for (const foot of [footingWest, footingEast]) {
+      addBox(foot.x, 0.45, foot.z, 1.4, 0.9, 1.4, whiteSteel);
+      addBox(foot.x, 1.0, foot.z, 1.0, 0.3, 1.0, whiteSteel);
+    }
   }
 
-  // Main tubular arch beams & truss cross lacing
-  for (let i = 0; i < archSegments; i++) {
-    const pA = archPoints[i];
-    const pB = archPoints[i + 1];
-    addBeam(pA, pB, archRadius, whiteSteel);
-
-    const pInnerA = archSecondaryPoints[i];
-    const pInnerB = archSecondaryPoints[i + 1];
-    addBeam(pInnerA, pInnerB, secondaryRadius, whiteSteel);
-
-    // Cross truss webbing
-    addBeam(pA, pInnerB, 0.09, whiteSteel);
-    addBeam(pInnerA, pB, 0.09, whiteSteel);
-    addBeam(pA, pInnerA, 0.12, whiteSteel);
-  }
-
-  // Footing abutment blocks at arch bases
-  for (const foot of [archWestFooting, archEastFooting]) {
-    addBox(foot.x, 0.8, foot.z, 2.2, 1.6, 2.2, whiteSteel);
-    addBox(foot.x, 1.7, foot.z, 1.6, 0.6, 1.6, whiteSteel);
+  // Overhead transverse portal tie braces connecting the left and right arches above the glass tube
+  for (const tIdx of [10, 14, 18, 22, 26]) {
+    const pL = leftArchPoints[tIdx];
+    const pR = rightArchPoints[tIdx];
+    if (pL && pR && pL.y > FOOTBRIDGE_META.deckHeight + 3.2) {
+      addBeam(pL, pR, 0.12, whiteSteel);
+      if (tIdx + 4 <= 26) {
+        const nextL = leftArchPoints[tIdx + 4];
+        const nextR = rightArchPoints[tIdx + 4];
+        if (nextL && nextR) {
+          addBeam(pL, nextR, 0.06, whiteSteel);
+          addBeam(pR, nextL, 0.06, whiteSteel);
+        }
+      }
+    }
   }
 
   // --- 3. Cylindrical Teal Glass Skywalk Corridor (透光玻璃圆筒连廊) ---
@@ -236,15 +255,13 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
     0,
     Math.PI * 2
   );
-  // Cylinder default is along Y; rotate to lie along the bridge axis (yawSpan)
   glassCylinder.rotateZ(Math.PI / 2);
   glassCylinder.rotateY(-yawSpan);
 
-  const glassMesh = addMesh(glassCylinder, tealGlass, tubeMid.x, tubeMid.y, tubeMid.z, 0, 0, 0, false);
+  addMesh(glassCylinder, tealGlass, tubeMid.x, tubeMid.y, tubeMid.z, 0, 0, 0, false);
 
   // Circular structural white steel ring ribs spaced every 2.0 meters along the tube
   const ringCount = Math.floor(tubeSpanLen / 2.0);
-  const ringStep = tubeSpanLen / ringCount;
 
   for (let i = 0; i <= ringCount; i++) {
     const t = i / ringCount;
@@ -256,23 +273,27 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
     ringGeo.rotateY(Math.PI / 2 - yawSpan);
     addMesh(ringGeo, whiteSteel, ringPos.x, ringPos.y, ringPos.z);
 
-    // Vertical suspension cable from arch down to this ring rib
-    // Find closest arch point
+    // Suspension cables from left and right arches down to left and right sides of each ring hoop
     const archIdx = Math.min(archSegments, Math.max(0, Math.round(t * (archSegments - 8) + 4)));
-    const archPt = archPoints[archIdx];
-    if (archPt && archPt.y > ringPos.y + tubeOuterRadius) {
-      const topOfRing = ringPos.clone();
-      topOfRing.y += tubeOuterRadius;
-      addBeam(topOfRing, archPt, 0.045, cableMetal);
+    const leftArchPt = leftArchPoints[archIdx];
+    const rightArchPt = rightArchPoints[archIdx];
+
+    if (leftArchPt && leftArchPt.y > ringPos.y) {
+      const leftRingSide = ringPos.clone().addScaledVector(normalSpan, tubeOuterRadius + 0.02);
+      addBeam(leftRingSide, leftArchPt, 0.038, cableMetal);
+    }
+    if (rightArchPt && rightArchPt.y > ringPos.y) {
+      const rightRingSide = ringPos.clone().addScaledVector(normalSpan, -(tubeOuterRadius + 0.02));
+      addBeam(rightRingSide, rightArchPt, 0.038, cableMetal);
     }
   }
 
   // 4 Longitudinal white steel stringer rails along the glass tube
-  for (const [angleOffset, rOff] of [
-    [0, 1], // top ridge
-    [Math.PI, 1], // bottom keel
-    [Math.PI * 0.5, 1], // left waist
-    [-Math.PI * 0.5, 1], // right waist
+  for (const [angleOffset] of [
+    [0], // top ridge
+    [Math.PI], // bottom keel
+    [Math.PI * 0.5], // left waist
+    [-Math.PI * 0.5], // right waist
   ]) {
     const p1 = pWestTop.clone();
     p1.y = tubeCenterY + Math.cos(angleOffset) * (tubeOuterRadius + 0.04);
@@ -288,7 +309,7 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
   }
 
   // --- 4. Main Walking Deck & Bridge Soffit across the Avenue ---
-  // Deck floor: 3.8m wide, 0.25m thick
+  // Deck floor: 3.8m wide, 0.24m thick
   const deckBox = addBox(
     tubeMid.x,
     FOOTBRIDGE_META.deckHeight - 0.12,
@@ -370,14 +391,14 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
     }
   }
 
-  // --- 5. West Approach Ramp (主校区侧缓坡引桥) ---
+  // --- 5. West Approach Ramp (主校区侧缓坡引桥 —— 内部100%无立柱完全通畅) ---
   const westRampLen = pWestStart.distanceTo(pWestTop);
   const westRampMid = pWestStart.clone().lerp(pWestTop, 0.5);
   const westRampYaw = Math.atan2(pWestTop.z - pWestStart.z, pWestTop.x - pWestStart.x);
   const westRampPitch = Math.atan2(pWestTop.y - pWestStart.y, Math.hypot(pWestTop.x - pWestStart.x, pWestTop.z - pWestStart.z));
 
   // Sloping deck
-  const westRampMesh = addBox(
+  addBox(
     westRampMid.x,
     westRampMid.y - 0.1,
     westRampMid.z,
@@ -390,7 +411,7 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
     westRampPitch
   );
 
-  // Support piers under west ramp
+  // Support piers under west ramp (placed underneath the ramp deck)
   for (const t of [0.35, 0.72]) {
     const pt = pWestStart.clone().lerp(pWestTop, t);
     const h = pt.y - 0.1;
@@ -451,7 +472,7 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
     eastRampPitch
   );
 
-  // Support piers under east ramp
+  // Support piers under east ramp (placed underneath the ramp deck)
   for (const t of [0.32, 0.68]) {
     const pt = pEastTop.clone().lerp(pEastEnd, t);
     const h = pt.y - 0.1;
@@ -493,37 +514,32 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
   }
 
   // Sixth Canteen western plaza paving extension connecting ramp landing directly to canteen doors
-  // Sixth Canteen center is around x=188, z=10. Plaza covers x in [170, 185], z in [6, 26]
   addBox(177, 0.08, 18.2, 13, 0.08, 16, stonePlaza, 0, 0, 0, false);
 
   // Landmark monument / campus pylon on the roadside (matching the white/gold stone pillar in the photo)
-  // Located at roadside near east bridgehead: x = 158.5, z = 12.5
+  // Located at roadside near east bridgehead: x = 158.5, z = 11.5 (well clear of the pedestrian ramp)
   addBox(158.5, 1.8, 11.5, 0.9, 3.6, 0.9, whiteSteel);
   addBox(158.5, 3.7, 11.5, 1.1, 0.25, 1.1, whiteSteel);
-  addBox(158.5, 2.2, 11.02, 0.55, 1.6, 0.08, goldAccent); // inscription plaque
+  addBox(158.5, 2.2, 11.02, 0.55, 1.6, 0.08, goldAccent);
 
   // Central median reservation greenery under the bridge along Xuefu Ave
-  // Xuefu Ave runs through x=143, z=16. Median strip at x=143.5, z in [-5, 35]
   addBox(143.5, 0.2, 16, 1.4, 0.25, 28, new THREE.MeshStandardMaterial({ color: '#557a55', roughness: 0.9 }));
   // Median curbs
   addBox(142.75, 0.25, 16, 0.14, 0.35, 28, whiteSteel);
   addBox(144.25, 0.25, 16, 0.14, 0.35, 28, whiteSteel);
 
-  // Add decorative trees/shrubs along the bridge approach plazas
-  // (Left and right of west ramp landing)
+  // Add decorative trees/shrubs planters along the bridge approach plazas
   for (const [tx, tz] of [
-    [114, 13],
-    [115, 2],
-    [169, 9],
-    [172, 28],
+    [113, 14],
+    [114, 1.5],
+    [169, 8],
+    [172, 28.5],
   ]) {
     addBox(tx, 0.25, tz, 2.2, 0.3, 2.2, whiteSteel);
     addBox(tx, 0.45, tz, 1.9, 0.2, 1.9, new THREE.MeshStandardMaterial({ color: '#4a6f44', roughness: 0.9 }));
   }
 
-  // --- 7. Colliders ---
-  // Keep pedestrian path through the bridge completely open for all walking routes
-
+  // Walkway is completely open for all routes
   world.add(bridgeGroup);
   return { bridgeGroup, meta: FOOTBRIDGE_META };
 }
