@@ -142,6 +142,105 @@ for(const list of batches.values()){
 }
 
 let progress=freshProgress(),life=freshLifeState(),saveRegistry=freshSaveRegistry();
+try{progress=sanitizeProgress(JSON.parse(localStorage.getItem('campus-echo-v1')));}catch{}
+try{
+  const rawLife=localStorage.getItem('campus-echo-life-v1');
+  if(rawLife)life=sanitizeLifeState(JSON.parse(rawLife));
+}catch{}
+try{
+  const rawSaves=localStorage.getItem('campus-echo-saves-v1');
+  if(rawSaves){
+    saveRegistry=sanitizeSaveRegistry(JSON.parse(rawSaves));
+  }else if(life.enrolled){
+    createSaveSlot(saveRegistry,{life,progress});
+    localStorage.setItem('campus-echo-saves-v1',JSON.stringify(saveRegistry));
+  }
+  const activeSlot=getSaveSlot(saveRegistry);
+  if(activeSlot){
+    life=sanitizeLifeState(activeSlot.life);
+    progress=sanitizeProgress(activeSlot.progress);
+    if(Number.isFinite(activeSlot.position?.x)&&Number.isFinite(activeSlot.position?.z)){
+      hero.g.position.set(activeSlot.position.x,.1,activeSlot.position.z);
+    }
+  }
+}catch{}
+let storageAvailable=true,qaRunning=false,previousScreenMode='start';
+function persistRegistry(){
+  if(qaRunning)return;
+  try{
+    localStorage.setItem('campus-echo-saves-v1',JSON.stringify(saveRegistry));
+    localStorage.setItem('campus-echo-v1',JSON.stringify(progress));
+    localStorage.setItem('campus-echo-life-v1',JSON.stringify(life));
+  }catch{
+    if(storageAvailable)toast('浏览器未开放本地存储，本次进度仅在当前页面保留。');
+    storageAvailable=false;
+  }
+}
+function save(){
+  if(qaRunning)return;
+  if(saveRegistry.activeSaveId){
+    updateSaveSlot(saveRegistry,saveRegistry.activeSaveId,{
+      life,
+      progress,
+      position:{x:hero.g.position.x,z:hero.g.position.z},
+    });
+  }
+  persistRegistry();
+}
+function updateStartScreenHint(){
+  const count=saveRegistry.saves.length;
+  if($('open-saves-button'))$('open-saves-button').textContent=`存档管理（共 ${count} 个存档 · 创建 / 读取 / 删除）`;
+  if(life.enrolled&&life.prologueCompleted&&saveRegistry.activeSaveId){
+    $('start-button').innerHTML='继续当前存档 <span>→</span>';
+    $('saved-hint').textContent=`当前存档：${life.playerName}（${life.genderLabel} · 学号 ${life.studentId}） · ${life.collegeName} · ${life.dormName} ${life.room}`;
+  }else{
+    $('start-button').innerHTML='创建新存档 · 办理入学 <span>→</span>';
+    $('saved-hint').textContent=`下一位入学新生年级顺序：${String(saveRegistry.nextGradeOrder).padStart(3,'0')} · 点击创建角色并开启父母送学剧情`;
+  }
+}
+setParentsStage('hidden');
+updateStartScreenHint();
+
+for(const selId of ['sleep-hour','wake-hour']){
+  const sel=$(selId);
+  if(sel){
+    sel.innerHTML=Array.from({length:24},(_,h)=>`<option value="${h}">${String(h).padStart(2,'0')} 时</option>`).join('');
+  }
+}
+if($('time-scale'))$('time-scale').value=String(life.timeScale);
+
+function updateProfileHUD(){
+  const info=formatGameClock(life.totalMinutes);
+  const name=sanitizePlayerName(life.playerName);
+  const gender=findGender(life.genderId)||findGender(life.genderLabel)||GENDERS[0];
+  const college=findCollege(life.collegeId)||findCollege(life.collegeName)||COLLEGES[0];
+  if($('player-portrait'))$('player-portrait').textContent=name.charAt(0)||'学';
+  if($('player-name-display'))$('player-name-display').textContent=`${name}（${gender.shortLabel} · ${life.studentId}）`;
+  if($('player-college-display'))$('player-college-display').textContent=`${college.name} · ${info.yearName}学生`;
+  if($('college-badge'))$('college-badge').textContent=`${college.name} · ${life.studentId}`;
+}
+function updateDormVisuals(){
+  for(const d of dormSpots){
+    const isMine=d.id===life.dormId;
+    d.marker.visible=isMine;
+    d.ring.material.color.set(isMine?'#f6c453':'#9eb8ad');
+    d.assignedLabel.visible=isMine;
+    d.normalLabel.visible=!isMine;
+  }
+  const myDorm=findDormitory(life.dormId);
+  if($('dorm-badge'))$('dorm-badge').textContent=`⌂ ${myDorm?myDorm.shortName:life.dormName} · ${life.room}`;
+  if($('enrollment-dorm-preview'))$('enrollment-dorm-preview').textContent=`入学随机分配宿舍：${life.dormName} · ${life.room}`;
+  if($('enrollment-student-id'))$('enrollment-student-id').textContent=`入学学号：${life.studentId}（${ENROLLMENT_YEAR}级 · 年级顺序 ${String(life.gradeOrder).padStart(3,'0')}）`;
+  updateProfileHUD();
+}
+function updateTimeHUD(){
+  const info=formatGameClock(life.totalMinutes);
+  if($('clock-display'))$('clock-display').textContent=`${info.summary} · ${info.period}`;
+  if($('player-college-display')){
+    const college=findCollege(life.collegeId)||findCollege(life.collegeName)||COLLEGES[0];
+    $('player-college-display').textContent=`${college.name} · ${info.yearName}学生`;
+  }
+}
 updateDormVisuals();updateTimeHUD();
 
 let mode='start',yaw=0,pitch=.35,camDistance=5.5,velocityY=0,grounded=true,stamina=100,elapsed=0,stepPhase=0,toastTimer=0;
