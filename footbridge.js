@@ -830,11 +830,6 @@ export function buildFootbridge(world, obstacles = [], occluders = []) {
   addBox(158.5, 3.7, 11.5, 1.1, 0.25, 1.1, whiteSteel);
   addBox(158.5, 2.2, 11.02, 0.55, 1.6, 0.08, goldAccent);
 
-  // Central median reservation greenery under the bridge along Xuefu Ave
-  addBox(143.5, 0.2, 16, 1.4, 0.25, 28, new THREE.MeshStandardMaterial({ color: '#557a55', roughness: 0.9 }));
-  // Median curbs
-  addBox(142.75, 0.25, 16, 0.14, 0.35, 28, whiteSteel);
-  addBox(144.25, 0.25, 16, 0.14, 0.35, 28, whiteSteel);
 
   // Add decorative trees/shrubs planters along the bridge approach plazas
   for (const [tx, tz] of [
