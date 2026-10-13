@@ -5,7 +5,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../node_modules/three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from '../node_modules/three/examples/jsm/utils/SkeletonUtils.js';
 import { createCharacterAnimator } from '../character-motion.js';
-import { updateEnergy } from '../motion.js';
 
 const bytes=await fs.readFile(new URL('../assets/characters/campus-traveler.glb',import.meta.url));
 const gltf=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
@@ -51,19 +50,17 @@ test('backpedaling reverses the existing stride smoothly across the phase wrap',
   assert.ok(rotations.some(q=>q.angleTo(rotations[50])>.2),'backward walk has visible leg swing');
 });
 
-test('depleted sprint keeps actual leg bones moving throughout the recovery walk',()=>{
-  const model=clone(gltf.scene),animator=createCharacterAnimator(model,gltf.animations);
-  let state={value:100,exhausted:false},frames=0;
-  const rotations=[];
-  for(let i=0;i<420;i++){
-    state=updateEnergy(state.value,state.exhausted,true,1/60);
-    animator.update(1/60,state.sprint?'Run':'Walk',{speed:state.sprint?10:5.4,exhausted:state.exhausted});
-    if(state.exhausted){frames++;if(frames>20)rotations.push(model.getObjectByName('Thigh_L').quaternion.x);}
+test('unlimited sprint keeps actual leg bones moving and transitions smoothly back to walking',()=>{
+  const model=clone(gltf.scene),animator=createCharacterAnimator(model,gltf.animations),rotations=[];
+  for(let i=0;i<1200;i++){
+    animator.update(1/60,'Run',{speed:10});
+    if(i>1100)rotations.push(model.getObjectByName('Thigh_L').quaternion.x);
     const sum=Object.values(animator.getState().weights).reduce((a,b)=>a+b,0);
     assert.ok(Math.abs(sum-1)<.00001);
   }
-  assert.ok(frames>=107);
-  assert.ok(Math.max(...rotations)-Math.min(...rotations)>.2,'walk leg excursion survives stamina depletion');
+  assert.ok(Math.max(...rotations)-Math.min(...rotations)>.2,'running legs continue after 20 seconds');
+  for(let i=0;i<60;i++)animator.update(1/60,'Walk',{speed:5.4});
+  assert.equal(animator.getState().action,'Walk');
 });
 
 test('facial shapes change geometry and remain independent between characters',()=>{

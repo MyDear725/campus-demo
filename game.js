@@ -6,7 +6,7 @@ import { drawCampusMap } from './campus-map.js';
 import { START, COLLEGES, GENDERS, ENROLLMENT_YEAR, findCollege, findGender, sanitizePlayerName, generateStudentId, parseStudentId, assignDormitory, enrollStudent, buildPrologueScript, completePrologue, freshSaveRegistry, sanitizeSaveRegistry, getSaveSlot, createSaveSlot, updateSaveSlot, deleteSaveSlot, moveWithCollision, freshProgress, sanitizeProgress, collectMemory, finishQuest, findDormitory, freshLifeState, sanitizeLifeState, advanceGameTime, formatGameClock, planSleepSchedule, executeSleep, daylightProfile } from './logic.js';
 import { upgradeAvatar } from './avatar.js';
 import { getFootbridgeElevation } from './footbridge.js';
-import { updateEnergy, movementAction, resolveKeyCode, WALK_SPEED, RUN_SPEED } from './motion.js';
+import { movementAction, resolveKeyCode, WALK_SPEED, RUN_SPEED } from './motion.js';
 import { createMouseLook, rotateLook, smoothLook, orbitOffset, followDistance } from './camera-controls.js';
 
 const $ = id => document.getElementById(id);
@@ -142,110 +142,11 @@ for(const list of batches.values()){
 }
 
 let progress=freshProgress(),life=freshLifeState(),saveRegistry=freshSaveRegistry();
-try{progress=sanitizeProgress(JSON.parse(localStorage.getItem('campus-echo-v1')));}catch{}
-try{
-  const rawLife=localStorage.getItem('campus-echo-life-v1');
-  if(rawLife)life=sanitizeLifeState(JSON.parse(rawLife));
-}catch{}
-try{
-  const rawSaves=localStorage.getItem('campus-echo-saves-v1');
-  if(rawSaves){
-    saveRegistry=sanitizeSaveRegistry(JSON.parse(rawSaves));
-  }else if(life.enrolled){
-    createSaveSlot(saveRegistry,{life,progress});
-    localStorage.setItem('campus-echo-saves-v1',JSON.stringify(saveRegistry));
-  }
-  const activeSlot=getSaveSlot(saveRegistry);
-  if(activeSlot){
-    life=sanitizeLifeState(activeSlot.life);
-    progress=sanitizeProgress(activeSlot.progress);
-    if(Number.isFinite(activeSlot.position?.x)&&Number.isFinite(activeSlot.position?.z)){
-      hero.g.position.set(activeSlot.position.x,.1,activeSlot.position.z);
-    }
-  }
-}catch{}
-let storageAvailable=true,qaRunning=false,previousScreenMode='start';
-function persistRegistry(){
-  if(qaRunning)return;
-  try{
-    localStorage.setItem('campus-echo-saves-v1',JSON.stringify(saveRegistry));
-    localStorage.setItem('campus-echo-v1',JSON.stringify(progress));
-    localStorage.setItem('campus-echo-life-v1',JSON.stringify(life));
-  }catch{
-    if(storageAvailable)toast('浏览器未开放本地存储，本次进度仅在当前页面保留。');
-    storageAvailable=false;
-  }
-}
-function save(){
-  if(qaRunning)return;
-  if(saveRegistry.activeSaveId){
-    updateSaveSlot(saveRegistry,saveRegistry.activeSaveId,{
-      life,
-      progress,
-      position:{x:hero.g.position.x,z:hero.g.position.z},
-    });
-  }
-  persistRegistry();
-}
-function updateStartScreenHint(){
-  const count=saveRegistry.saves.length;
-  if($('open-saves-button'))$('open-saves-button').textContent=`存档管理（共 ${count} 个存档 · 创建 / 读取 / 删除）`;
-  if(life.enrolled&&life.prologueCompleted&&saveRegistry.activeSaveId){
-    $('start-button').innerHTML='继续当前存档 <span>→</span>';
-    $('saved-hint').textContent=`当前存档：${life.playerName}（${life.genderLabel} · 学号 ${life.studentId}） · ${life.collegeName} · ${life.dormName} ${life.room}`;
-  }else{
-    $('start-button').innerHTML='创建新存档 · 办理入学 <span>→</span>';
-    $('saved-hint').textContent=`下一位入学新生年级顺序：${String(saveRegistry.nextGradeOrder).padStart(3,'0')} · 点击创建角色并开启父母送学剧情`;
-  }
-}
-setParentsStage('hidden');
-updateStartScreenHint();
-
-for(const selId of ['sleep-hour','wake-hour']){
-  const sel=$(selId);
-  if(sel){
-    sel.innerHTML=Array.from({length:24},(_,h)=>`<option value="${h}">${String(h).padStart(2,'0')} 时</option>`).join('');
-  }
-}
-if($('time-scale'))$('time-scale').value=String(life.timeScale);
-
-function updateProfileHUD(){
-  const info=formatGameClock(life.totalMinutes);
-  const name=sanitizePlayerName(life.playerName);
-  const gender=findGender(life.genderId)||findGender(life.genderLabel)||GENDERS[0];
-  const college=findCollege(life.collegeId)||findCollege(life.collegeName)||COLLEGES[0];
-  if($('player-portrait'))$('player-portrait').textContent=name.charAt(0)||'学';
-  if($('player-name-display'))$('player-name-display').textContent=`${name}（${gender.shortLabel} · ${life.studentId}）`;
-  if($('player-college-display'))$('player-college-display').textContent=`${college.name} · ${info.yearName}学生`;
-  if($('college-badge'))$('college-badge').textContent=`${college.name} · ${life.studentId}`;
-}
-function updateDormVisuals(){
-  for(const d of dormSpots){
-    const isMine=d.id===life.dormId;
-    d.marker.visible=isMine;
-    d.ring.material.color.set(isMine?'#f6c453':'#9eb8ad');
-    d.assignedLabel.visible=isMine;
-    d.normalLabel.visible=!isMine;
-  }
-  const myDorm=findDormitory(life.dormId);
-  if($('dorm-badge'))$('dorm-badge').textContent=`⌂ ${myDorm?myDorm.shortName:life.dormName} · ${life.room}`;
-  if($('enrollment-dorm-preview'))$('enrollment-dorm-preview').textContent=`入学随机分配宿舍：${life.dormName} · ${life.room}`;
-  if($('enrollment-student-id'))$('enrollment-student-id').textContent=`入学学号：${life.studentId}（${ENROLLMENT_YEAR}级 · 年级顺序 ${String(life.gradeOrder).padStart(3,'0')}）`;
-  updateProfileHUD();
-}
-function updateTimeHUD(){
-  const info=formatGameClock(life.totalMinutes);
-  if($('clock-display'))$('clock-display').textContent=`${info.summary} · ${info.period}`;
-  if($('player-college-display')){
-    const college=findCollege(life.collegeId)||findCollege(life.collegeName)||COLLEGES[0];
-    $('player-college-display').textContent=`${college.name} · ${info.yearName}学生`;
-  }
-}
 updateDormVisuals();updateTimeHUD();
 
 let mode='start',yaw=0,pitch=.35,camDistance=5.5,velocityY=0,grounded=true,stamina=100,elapsed=0,stepPhase=0,toastTimer=0;
 let targetYaw=yaw,targetPitch=pitch;
-let exhausted=false,landing=0,playerAction='Idle',actualSpeed=0;
+let landing=0,playerAction='Idle',actualSpeed=0;
 function turnView(dx,dy){({yaw:targetYaw,pitch:targetPitch}=rotateLook(targetYaw,targetPitch,dx,dy));}
 function resetLook(heading=0,elevation=.35){yaw=targetYaw=heading;pitch=targetPitch=elevation;hero.g.rotation.y=yaw;}
 function updateLook(dt){
@@ -724,10 +625,8 @@ function stepPlayer(dt){
     let forward=(keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0);
     let right=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0);
     const moving=forward!==0||right!==0;
-    const energy=updateEnergy(stamina,exhausted,moving&&(keys.has('ShiftLeft')||keys.has('ShiftRight')),dt);
-    const sprint=energy.sprint;stamina=energy.value;exhausted=energy.exhausted;
-    $('stamina-bar').style.width=stamina+'%';$('stamina-bar').classList.toggle('exhausted',exhausted);
-    $('movement-status').textContent=exhausted?'体力恢复中 · 暂时步行':sprint?'奔跑中':'自由探索中';
+    const sprint=moving&&(keys.has('ShiftLeft')||keys.has('ShiftRight'));
+    $('movement-status').textContent=sprint?'奔跑中':'自由探索中';
     actualSpeed=0;landing=Math.max(0,landing-dt);
     if(moving){const n=Math.hypot(forward,right);forward/=n;right/=n;const speed=sprint?RUN_SPEED:WALK_SPEED;const dx=(right*Math.cos(yaw)-forward*Math.sin(yaw))*speed*dt;const dz=(-forward*Math.cos(yaw)-right*Math.sin(yaw))*speed*dt;
       const p=moveWithCollision(hero.g.position,dx,dz,obstacles);actualSpeed=Math.hypot(p.x-hero.g.position.x,p.z-hero.g.position.z)/Math.max(dt,.0001);hero.g.position.x=p.x;hero.g.position.z=p.z;
@@ -741,8 +640,8 @@ function stepPlayer(dt){
     }else{
       hero.g.position.y=floorY;
     }
-    playerAction=movementAction({grounded,velocityY,speed:actualSpeed,sprint,exhausted,landing});
-    hero.updateModel?.(dt,playerAction,{speed:actualSpeed,exhausted,backward:forward<0});
+    playerAction=movementAction({grounded,velocityY,speed:actualSpeed,sprint,landing});
+    hero.updateModel?.(dt,playerAction,{speed:actualSpeed,backward:forward<0});
     updateInteraction();
   }
 }
@@ -759,7 +658,7 @@ function tick(){
     student.updateModel?.(dt);
     if(father.g.visible)father.updateModel?.(dt,fatherTalking?'Talk':'Idle',{smile:true,talking:fatherTalking});
     if(mother.g.visible)mother.updateModel?.(dt,motherTalking?'Talk':'Idle',{smile:true,talking:motherTalking});
-    if(mode!=='play')hero.updateModel?.(dt,exhausted?'Tired':'Idle',{exhausted,smile:mode==='dialogue'||mode==='complete'});
+    if(mode!=='play')hero.updateModel?.(dt,'Idle',{smile:mode==='dialogue'||mode==='complete'});
   }
   const overviewMode=mode==='start'||mode==='create'||(mode==='saves'&&previousScreenMode!=='pause');
   if(overviewMode){
@@ -771,7 +670,7 @@ function tick(){
   for(const d of dormSpots){if(d.marker.visible){d.marker.rotation.y=elapsed*.9;d.marker.position.y=1.85+Math.sin(elapsed*2)*.14;d.ring.scale.setScalar(1+Math.sin(elapsed*2.2)*.08);}}
   guideMarker.position.y=2.8+Math.sin(elapsed*2)*.12;guideMarker.rotation.y=elapsed;
   const light=daylightProfile(life.totalMinutes);
-  campus.landscape.update(elapsed);atmosphere.update(elapsed,qaRunning?null:light.sunOffset);
+  campus.landscape.update(elapsed,camera);atmosphere.update(elapsed,qaRunning?null:light.sunOffset);
   if(!qaRunning){
     sun.intensity=light.sunIntensity;
     hemiLight.intensity=light.hemiIntensity;
@@ -784,12 +683,12 @@ function tick(){
   const sunOff=qaRunning?{x:-150,y:350,z:180}:light.sunOffset;
   sun.position.set(shadowX+sunOff.x,sunOff.y,shadowZ+sunOff.z);sun.target.position.set(shadowX,0,shadowZ);
   if(toastTimer>0&&performance.now()>toastTimer){toastTimer=0;$('toast').classList.remove('visible');}
-  if(elapsed-lastMapTime>.1){drawMap();updateTimeHUD();lastMapTime=elapsed;const degrees=((yaw*180/Math.PI)%360+360)%360;$('compass-heading').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(degrees/45)%8];canvas.dataset.diagnostics=JSON.stringify({mode,x:+hero.g.position.x.toFixed(2),y:+hero.g.position.y.toFixed(2),z:+hero.g.position.z.toFixed(2),yaw:+yaw.toFixed(4),facing:+hero.g.rotation.y.toFixed(4),targetYaw:+targetYaw.toFixed(4),pitch:+pitch.toFixed(2),mouseLook:canvas.dataset.mouseLook||'unlocked',cameraDistance:+cameraDistance.toFixed(2),grounded,stamina:Math.round(stamina),exhausted,action:hero.animationState?.().action,animationPhase:hero.animationState?.().phase,frames:frameCount,environment:campus.landscape.stats,quality:campus.landscape.quality,buildings:campus.buildings.length,drawCalls:renderer.info.render.calls,progress,life,clock:formatGameClock(life.totalMinutes)});}
+  if(elapsed-lastMapTime>.1){drawMap();updateTimeHUD();lastMapTime=elapsed;const degrees=((yaw*180/Math.PI)%360+360)%360;$('compass-heading').textContent=['N','NW','W','SW','S','SE','E','NE'][Math.round(degrees/45)%8];canvas.dataset.diagnostics=JSON.stringify({mode,x:+hero.g.position.x.toFixed(2),y:+hero.g.position.y.toFixed(2),z:+hero.g.position.z.toFixed(2),yaw:+yaw.toFixed(4),facing:+hero.g.rotation.y.toFixed(4),targetYaw:+targetYaw.toFixed(4),pitch:+pitch.toFixed(2),mouseLook:canvas.dataset.mouseLook||'unlocked',cameraDistance:+cameraDistance.toFixed(2),grounded,action:hero.animationState?.().action,animationPhase:hero.animationState?.().phase,frames:frameCount,environment:campus.landscape.stats,quality:campus.landscape.quality,buildings:campus.buildings.length,drawCalls:renderer.info.render.calls,progress,life,clock:formatGameClock(life.totalMinutes)});}
   renderer.render(scene,camera);
 }
 updateQuest();drawMap();tick();
 // Read-only diagnostics for smoke checks and performance inspection.
-Object.defineProperty(window,'campusDemo',{value:Object.freeze({getState:()=>({mode,position:{x:hero.g.position.x,y:hero.g.position.y,z:hero.g.position.z},grounded,stamina,progress:JSON.parse(JSON.stringify(progress)),life:JSON.parse(JSON.stringify(life)),clock:formatGameClock(life.totalMinutes),interactable:closest?.name||null,renderCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,frames:frameCount,webgl:!!renderer.getContext()})})});
+Object.defineProperty(window,'campusDemo',{value:Object.freeze({getState:()=>({mode,position:{x:hero.g.position.x,y:hero.g.position.y,z:hero.g.position.z},grounded,progress:JSON.parse(JSON.stringify(progress)),life:JSON.parse(JSON.stringify(life)),clock:formatGameClock(life.totalMinutes),interactable:closest?.name||null,renderCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,frames:frameCount,webgl:!!renderer.getContext()})})});
 
 // Explicit developer-only integration runner. Uses the same simulation, collision,
 // interaction and dialogue functions; never overwrites a player's saved progress.
@@ -818,7 +717,7 @@ if(new URLSearchParams(location.search).has('qa')){
     };
     const finishDialogue=()=>{let i=0;while(mode==='dialogue'&&i++<8)nextDialogue();check(i<8,'对话能够结束');};
     try{
-      progress=freshProgress();hero.g.position.set(START.x,.1,START.z);grounded=true;velocityY=0;stamina=100;exhausted=false;landing=0;mode='play';$('start-screen').classList.add('hidden');$('hud').classList.remove('hidden');
+      progress=freshProgress();hero.g.position.set(START.x,.1,START.z);grounded=true;velocityY=0;landing=0;mode='play';$('start-screen').classList.add('hidden');$('hud').classList.remove('hidden');
       resetLook();cameraDistance=camDistance=5.5;
       let orbitValid=true,behindValid=true;
       for(let i=0;i<1200;i++){
@@ -843,17 +742,16 @@ if(new URLSearchParams(location.search).has('qa')){
       check(yaw===pausedYaw&&targetYaw===yaw,'暂停会清除未完成的转向，恢复时不突然转头');
       resetLook();
       raycaster.set(new THREE.Vector3(30,4,174),new THREE.Vector3(0,0,-1));raycaster.far=50;check(raycaster.intersectObjects(occluders,false).length>0,'信息楼实际轮廓能遮挡第三人称镜头');
-      keys.add('KeyW');keys.add('ShiftLeft');stepPlayer(.1);keys.clear();check(stamina<100&&hero.g.position.z<START.z-.8,'奔跑加速并消耗体力');hero.g.position.set(START.x,.1,START.z);
-      stamina=100;exhausted=false;hero.g.position.set(-270,.1,140);keys.add('KeyW');keys.add('ShiftLeft');
-      for(let i=0;i<287;i++)stepPlayer(1/60);
-      check(exhausted&&playerAction==='Walk','体力耗尽后按住 Shift 自动切换步行');
-      const phases=[];let continuous=true;
-      for(let i=0;i<80;i++){stepPlayer(1/60);continuous&&=playerAction==='Walk';phases.push(hero.animationState().phase);}
-      check(continuous&&Math.max(...phases)-Math.min(...phases)>.5,'恢复期间保持连续走路动画，没有反复重置');
-      keys.clear();stepPlayer(1/60);check(playerAction==='Tired','体力耗尽后停下播放疲劳喘息');
-      keys.add('KeyW');keys.add('ShiftLeft');for(let i=0;i<40;i++)stepPlayer(1/60);
-      check(!exhausted&&playerAction==='Run','体力恢复到门槛后重新允许奔跑');
-      keys.clear();stamina=100;exhausted=false;hero.g.position.set(START.x,.1,START.z);
+      keys.add('KeyW');keys.add('ShiftLeft');stepPlayer(.1);keys.clear();check(hero.g.position.z<START.z-.8,'Shift 奔跑加速');
+      hero.g.position.set(-270,.1,140);keys.add('KeyW');keys.add('ShiftLeft');
+      let continuous=true;const phases=[];
+      for(let i=0;i<1200;i++){stepPlayer(1/60);continuous&&=playerAction==='Run';if(i>1100)phases.push(hero.animationState().phase);}
+      check(continuous,'持续奔跑 20 秒不再受体力限制');
+      check(Math.max(...phases)-Math.min(...phases)>.5,'持续奔跑动画保持播放');
+      keys.delete('ShiftLeft');stepPlayer(1/60);check(playerAction==='Walk','松开 Shift 恢复步行动画');
+      keys.clear();stepPlayer(1/60);check(playerAction==='Idle','停下正常待机，无体力疲劳状态');
+      check(!$('stamina-bar'),'界面已移除体力条');
+      hero.g.position.set(START.x,.1,START.z);
       velocityY=7.2;grounded=false;stepPlayer(1/60);check(hero.g.position.y>.1,'跳跃离地');for(let i=0;i<120;i++)stepPlayer(1/60);check(grounded&&hero.g.position.y===.1,'跳跃后正确落地');
       const follow=route=>route.forEach(([x,z])=>walk(x,z));
       follow(QUEST_ROUTES.toGuide);check(closest?.type==='guide','书韵广场向导可达');interact();finishDialogue();check(progress.started,'领取任务');

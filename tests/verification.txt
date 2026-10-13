@@ -46,3 +46,27 @@ Environment upgrade — 2026-10-12
 - Browser inspected lake, avenue and third-person entry views. Low then high quality confirmed in rendered diagnostics; no shader/console errors.
 - View screenshots: art/environment/lakeside-preview.png; art/environment/avenue-preview.png.
 - Performance measures: instanced forest, merged static roads/shore props, shared lake reflection, low-quality reflection/shadow fallback. No foreground FPS benchmark claimed.
+
+Planting detail upgrade — 2026-10-13
+- Original procedural planting: 61 flower beds, 2694 flower clumps, 284 shrubs, 15662 grass tufts and 4418 scattered fallen leaves.
+- World-space lawn colour variation, mulch rings, denser basal leaves, subtle plant sway; corrected upper branch continuity on tall trees.
+- Instanced 48-metre spatial cells, distance fade/culling, reduced plant density in low quality; decorative vegetation adds no collision barriers.
+- Full Node suite: 30/30 passed. Final affected landscape tests: 4/4 passed after last planting adjustments.
+- Browser core gameplay: 69/69 passed; high/low quality inspected; no rendering warnings or errors.
+- Visual QA: entry flower garden, lakeside view; screenshot artifacts flower-garden-preview.png and lakeside-gardens-preview.png.
+- No measured FPS claim. Git changes remain local for user review and upload.
+
+Road hierarchy and boundary upgrade — 2026-10-13
+- Explicit road classes: 3 external streets, 5 campus main roads, 14 secondary routes including the short living-area gate connector.
+- Deep asphalt/double yellow external markings, lighter main roads, warm paved secondary paths; markings and kerbs clipped at junctions and crossings.
+- Shared fence panel data drives 3D design, map strokes and segment colliders. Gate and pedestrian openings preserved; foliage avoids fences.
+- Full final Node suite: 32/32 passed. Includes fast fence-crossing rejection, rotated panels, south gate, living-area gate, all quest routes and planting clearances.
+- Browser gameplay runner: 69/69 passed with new roads and fences; no console/shader errors in preview.
+- Visually inspected public-road boundary, internal paved path, living-area crossing and main road; saved road-boundary-preview.png, secondary-road-preview.png and campus-crossing-preview.png.
+- Local changes only; no commit or push performed.
+
+Teaching courtyard and unlimited sprint — 2026-10-13
+- Full Node suite: 32/32 passed; updated obsolete stamina tests, verified real rig continues running for 20 seconds, and walk/idle transitions.
+- Browser core flow: 70/70 passed, including unlimited sprint and absence of the stamina meter; no console warnings/errors.
+- New full-scene tests: A/B/C approaches walkable, inward-facing entrance orientation, solid fountain basin, fountain animation and quality switching.
+- Original building interiors remain closed; entrance and plaza design is an original interpretation of the mapped footprints.

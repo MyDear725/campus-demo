@@ -1,4 +1,4 @@
-import { MAP_BOUNDS, CAMPUS_START, DORMITORIES, nearPolygon } from './campus-layout.js';
+import { MAP_BOUNDS, CAMPUS_START, DORMITORIES, nearPolygon, segmentDistance } from './campus-layout.js';
 export { DORMITORIES };
 export const WORLD_LIMIT = MAP_BOUNDS.maxX;
 export const START = CAMPUS_START;
@@ -43,6 +43,10 @@ export const DEFAULT_GENDER_ID = 'male';
 export function collides(x, z, obstacles, radius = 0.43) {
   if (x<MAP_BOUNDS.minX+radius||x>MAP_BOUNDS.maxX-radius||z<MAP_BOUNDS.minZ+radius||z>MAP_BOUNDS.maxZ-radius) return true;
   return obstacles.some(o => {
+    if(o.segment){
+      if(o.minX!==undefined&&(x<o.minX-radius||x>o.maxX+radius||z<o.minZ-radius||z>o.maxZ+radius))return false;
+      return segmentDistance(x,z,...o.segment)<radius+o.thickness/2;
+    }
     if(o.points)return nearPolygon(x,z,o.points,radius);
     const cx = Math.max(o.minX, Math.min(x, o.maxX));
     const cz = Math.max(o.minZ, Math.min(z, o.maxZ));
